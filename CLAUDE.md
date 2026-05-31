@@ -4,13 +4,13 @@ Guidance for Claude Code when working in this repository.
 
 ## Project
 
-**ohffs** is a TypeScript/Node.js MCP server that connects Claude Code (VS Code) to GitHub, enabling a full **issue → branch → merge → close** workflow. The goal: discuss tasks in Claude.ai, then push them to GitHub as issues and branches in one shot via Claude Code.
+**okffs** is a TypeScript/Node.js MCP server that connects Claude Code (VS Code) to GitHub, enabling a full **issue → branch → merge → close** workflow. The goal: discuss tasks in Claude.ai, then push them to GitHub as issues and branches in one shot via Claude Code.
 
 ## Stack
 
 - TypeScript / Node.js MCP server
 - GitHub Personal Access Token (PAT) authentication (upgrade to a GitHub App later)
-- Published to npm (package name: `ohffs`) and the MCP Registry (`registry.modelcontextprotocol.io`)
+- Published to npm (package name: `okffs`) and the MCP Registry (`registry.modelcontextprotocol.io`)
 
 ## Conventions
 
@@ -59,7 +59,7 @@ close-42-add-hero-section-to-homepage
 
 ## Publishing targets
 
-- **npm** — package name: `ohffs`
+- **npm** — package name: `okffs`
 - **MCP Registry** (`registry.modelcontextprotocol.io`) — via the `mcp-publisher` CLI
 - Listings: `mcp.so`, `smithery.ai`, `glama.ai/mcp`, `punkpeye/awesome-mcp-servers`
 

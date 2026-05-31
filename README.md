@@ -1,8 +1,8 @@
-# ohffs
+# okffs
 
 > **Work in progress.**
 
-**ohffs** is a TypeScript/Node.js [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server that connects Claude Code (VS Code) to GitHub, enabling a full **issue → branch → merge → close** workflow. Discuss tasks in Claude.ai, then push them to GitHub as issues and branches in one shot via Claude Code.
+**okffs** is a TypeScript/Node.js [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server that connects Claude Code (VS Code) to GitHub, enabling a full **issue → branch → merge → close** workflow. Discuss tasks in Claude.ai, then push them to GitHub as issues and branches in one shot via Claude Code.
 
 ## Stack
 
@@ -92,7 +92,7 @@ This repo includes a `pre-push` git hook ([.githooks/pre-push](.githooks/pre-pus
    ```bash
    BACKUP_USER=youruser
    BACKUP_SERVER=nas.local          # hostname or IP
-   BACKUP_PATH=/volume1/backups/ohffs
+   BACKUP_PATH=/volume1/backups/okffs
    BACKUP_PASSWORD=yourpassword
    BACKUP_PORT=22                   # optional, defaults to 22
    ```
