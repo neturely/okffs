@@ -2,7 +2,73 @@
 
 > **Work in progress.**
 
-ohffs is a Model Context Protocol server for GitHub. Create and manage GitHub issues and projects using Claude.ai and your IDE — then push them as matching branches straight into your repo via Claude Code.
+**ohffs** is a TypeScript/Node.js [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server that connects Claude Code (VS Code) to GitHub, enabling a full **issue → branch → merge → close** workflow. Discuss tasks in Claude.ai, then push them to GitHub as issues and branches in one shot via Claude Code.
+
+## Stack
+
+- TypeScript / Node.js MCP server
+- GitHub Personal Access Token (PAT) authentication (GitHub App support planned)
+- Published to [npm](https://www.npmjs.com/) and the [MCP Registry](https://registry.modelcontextprotocol.io)
+
+## Status
+
+This project is being built in phases. See [CLAUDE.md](CLAUDE.md) for the full roadmap.
+
+| Phase | Scope | Status |
+|------|-------|--------|
+| 1 | Core MCP server — `create_issue`, `create_branch`, `list_issues`, `close_issue` | Planned |
+| 2 | Bulk creation — `create_issues_from_list` | Planned |
+| 3 | Claude.ai bridge — markdown paste format + `/push-to-github` | Planned |
+| 4 | Auto-close on merge — embed `Closes #N` in PR body | Planned |
+| 5 | GitHub Projects v2 (optional) | Planned |
+
+## Getting started
+
+> The server is not yet published. These steps describe the intended local setup.
+
+### Prerequisites
+
+- Node.js (LTS) and npm
+- A GitHub Personal Access Token with `repo` and `project` scopes
+
+### Setup
+
+1. Install dependencies:
+
+   ```bash
+   npm install
+   ```
+
+2. Copy the environment template and add your token:
+
+   ```bash
+   cp .env.example .env
+   ```
+
+   Set `GITHUB_TOKEN` in `.env` (git-ignored, never committed):
+
+   ```bash
+   GITHUB_TOKEN=ghp_your_personal_access_token_here
+   ```
+
+### Conventions
+
+**Branch naming:** `close-{issue-number}-{kebab-title-slug}` (title truncated to ~5 words, no slashes)
+
+```
+close-42-add-hero-section-to-homepage
+```
+
+**Pull requests:**
+
+- Title: `Close #42 - Add hero section to homepage`
+- Body always includes `Closes #42` so GitHub auto-closes the issue when the PR merges to `main`.
+
+**Operating principles:**
+
+- Tools confirm before bulk-creating (safety first).
+- GitHub is always the source of truth for issue state — never local.
+- Keep the tool surface minimal: do one thing well per tool.
 
 ## NAS backup hook
 
@@ -21,7 +87,7 @@ This repo includes a `pre-push` git hook ([.githooks/pre-push](.githooks/pre-pus
    git config core.hooksPath .githooks
    ```
 
-2. **Create a `.env`** in the repo root with your backup target. It is git-ignored, so your credentials are never committed:
+2. **Add the backup variables to `.env`** (same file as `GITHUB_TOKEN`; git-ignored). See [.env.example](.env.example):
 
    ```bash
    BACKUP_USER=youruser
