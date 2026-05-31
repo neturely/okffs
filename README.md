@@ -22,9 +22,32 @@ This project is being built in phases. See [CLAUDE.md](CLAUDE.md) for the full r
 | 4 | Auto-close on merge — embed `Closes #N` in PR body | Planned |
 | 5 | GitHub Projects v2 (optional) | Planned |
 
-## Getting started
+## Publishing to npm
 
-> The server is not yet published. These steps describe the intended local setup.
+Requires an npm account with maintainer access to the `okffs` package.
+
+1. Log in (WSL users: use `--auth-type=legacy` to avoid browser issues):
+
+   ```bash
+   npm login --auth-type=legacy
+   ```
+
+2. Bump the version in `package.json` following [semver](https://semver.org/), then publish:
+
+   ```bash
+   npm version patch   # or minor / major
+   npm publish
+   ```
+
+3. Verify:
+
+   ```bash
+   npm show okffs
+   ```
+
+Files excluded from the published package are listed in [.npmignore](.npmignore).
+
+## Getting started
 
 ### Prerequisites
 

@@ -1,5 +1,18 @@
 {
   "name": "okffs",
   "version": "0.0.1",
-  "private": true
+  "description": "MCP server for GitHub issue and branch management. Coming soon.",
+  "keywords": [
+    "mcp",
+    "github",
+    "issues",
+    "branches",
+    "cli"
+  ],
+  "author": "2b9sa2owa",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/2b9sa2owa/okffs.git"
+  }
 }
