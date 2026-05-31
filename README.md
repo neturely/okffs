@@ -87,7 +87,7 @@ This repo includes a `pre-push` git hook ([.githooks/pre-push](.githooks/pre-pus
    git config core.hooksPath .githooks
    ```
 
-2. **Add the backup variables to `.env`** (same file as `GITHUB_TOKEN`; git-ignored). See [.env.example](.env.example):
+2. **Add the backup variables to `.env`** (same file as `GITHUB_TOKEN`; git-ignored):
 
    ```bash
    BACKUP_USER=youruser
