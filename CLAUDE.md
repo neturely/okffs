@@ -20,10 +20,10 @@ Guidance for Claude Code when working in this repository.
 
 ### Branch naming
 
-`close-{issue-number}-{kebab-title-slug}` — title truncated to ~5 words, no forward slashes.
+`{issue-number}-{kebab-title-slug}` — title truncated to ~5 words, no forward slashes.
 
 ```
-close-42-add-hero-section-to-homepage
+42-add-hero-section-to-homepage
 ```
 
 ### Pull requests
@@ -33,11 +33,13 @@ close-42-add-hero-section-to-homepage
 
 ## Build phases
 
-### Phase 1 — Core MCP server
-- Scaffold the TypeScript MCP server.
-- PAT auth via `.env`.
-- Tools: `create_issue`, `create_branch`, `list_issues`, `close_issue`.
-- Single issue + branch creation, end to end.
+### Phase 1 — Core MCP server ✓ Complete
+- TypeScript MCP server scaffolded.
+- PAT auth via `.env` (`GITHUB_TOKEN`, `GITHUB_OWNER`, `GITHUB_REPO`).
+- Tools: `create_issue`, `list_issues`, `close_issue`.
+- `create_issue` auto-creates a branch, embeds the branch name in the issue body, and surfaces default assignees/labels from `.env` (shown as `(default)` in output).
+- `list_issues` returns each issue with its issue URL and inferred branch URL.
+- Optional `.env` defaults: `OKFFS_DEFAULT_ASSIGNEES`, `OKFFS_DEFAULT_LABELS`, `OKFFS_PROMPT_METADATA`.
 
 ### Phase 2 — Bulk creation
 - `create_issues_from_list` tool.
@@ -66,6 +68,7 @@ close-42-add-hero-section-to-homepage
 ## Local setup
 
 - `.env` holds the GitHub PAT (`GITHUB_TOKEN`) with `repo` + `project` scopes. It is git-ignored — see [.env.example](.env.example).
+- Optional defaults applied to every new issue: `OKFFS_DEFAULT_ASSIGNEES` (comma-separated), `OKFFS_DEFAULT_LABELS` (comma-separated), `OKFFS_PROMPT_METADATA` (set to `false` to silence the tip).
 
 ## Codebase search
 

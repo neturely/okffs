@@ -9,6 +9,7 @@ pnpm-debug.log*
 
 # Node/build artifacts
 node_modules/
+dist/
 
 # Environment files
 .env

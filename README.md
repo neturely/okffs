@@ -16,7 +16,7 @@ This project is being built in phases. See [CLAUDE.md](CLAUDE.md) for the full r
 
 | Phase | Scope | Status |
 |------|-------|--------|
-| 1 | Core MCP server — `create_issue`, `create_branch`, `list_issues`, `close_issue` | Planned |
+| 1 | Core MCP server — `create_issue`, `list_issues`, `close_issue` | **Complete** |
 | 2 | Bulk creation — `create_issues_from_list` | Planned |
 | 3 | Claude.ai bridge — markdown paste format + `/push-to-github` | Planned |
 | 4 | Auto-close on merge — embed `Closes #N` in PR body | Planned |
@@ -70,16 +70,34 @@ Files excluded from the published package are listed in [.npmignore](.npmignore)
 
    Set `GITHUB_TOKEN` in `.env` (git-ignored, never committed):
 
-   ```bash
+   ```env
    GITHUB_TOKEN=ghp_your_personal_access_token_here
+   GITHUB_OWNER=your-github-username
+   GITHUB_REPO=your-repo-name
    ```
 
-### Conventions
+3. Optionally set defaults applied to every new issue:
 
-**Branch naming:** `close-{issue-number}-{kebab-title-slug}` (title truncated to ~5 words, no slashes)
+   ```env
+   OKFFS_DEFAULT_ASSIGNEES=your-github-username
+   OKFFS_DEFAULT_LABELS=feature,bug
+   OKFFS_PROMPT_METADATA=true   # set to false to hide the assignees/labels tip
+   ```
+
+## Tools
+
+| Tool | Description |
+|------|-------------|
+| `create_issue` | Creates a GitHub issue and a corresponding branch. Returns issue URL, number, and branch name. Applies `OKFFS_DEFAULT_ASSIGNEES` / `OKFFS_DEFAULT_LABELS` from `.env` when not supplied explicitly. |
+| `list_issues` | Lists all open issues with their issue URL and branch URL. |
+| `close_issue` | Closes a GitHub issue by number. |
+
+## Conventions
+
+**Branch naming:** `{issue-number}-{kebab-title-slug}` (title truncated to ~5 words)
 
 ```
-close-42-add-hero-section-to-homepage
+42-add-hero-section-to-homepage
 ```
 
 **Pull requests:**
