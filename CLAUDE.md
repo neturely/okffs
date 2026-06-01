@@ -66,4 +66,3 @@ close-42-add-hero-section-to-homepage
 ## Local setup
 
 - `.env` holds the GitHub PAT (`GITHUB_TOKEN`) with `repo` + `project` scopes. It is git-ignored — see [.env.example](.env.example).
-- A `pre-push` git hook backs up changed files to a NAS over SSH; see the README for configuration. Enable with `git config core.hooksPath .githooks`.

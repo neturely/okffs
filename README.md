@@ -26,10 +26,10 @@ This project is being built in phases. See [CLAUDE.md](CLAUDE.md) for the full r
 
 Requires an npm account with maintainer access to the `okffs` package.
 
-1. Log in (WSL users: use `--auth-type=legacy` to avoid browser issues):
+1. Log in:
 
    ```bash
-   npm login --auth-type=legacy
+   npm login
    ```
 
 2. Bump the version in `package.json` following [semver](https://semver.org/), then publish:
@@ -92,38 +92,3 @@ close-42-add-hero-section-to-homepage
 - Tools confirm before bulk-creating (safety first).
 - GitHub is always the source of truth for issue state — never local.
 - Keep the tool surface minimal: do one thing well per tool.
-
-## NAS backup hook
-
-This repo includes a `pre-push` git hook ([.githooks/pre-push](.githooks/pre-push)) that backs up the files changed in the most recent commit to a remote server (e.g. a NAS) over SSH before each push. Failed transfers are queued and retried on the next push.
-
-### Requirements
-
-- `sshpass`, `ssh`, and `scp` available on your `PATH`.
-- The backup target must accept **password-based** SSH (keyboard-interactive); public-key auth is explicitly disabled in the hook.
-
-### Setup
-
-1. **Enable the hook directory** so git runs the hook:
-
-   ```bash
-   git config core.hooksPath .githooks
-   ```
-
-2. **Add the backup variables to `.env`** (same file as `GITHUB_TOKEN`; git-ignored):
-
-   ```bash
-   BACKUP_USER=youruser
-   BACKUP_SERVER=nas.local          # hostname or IP
-   BACKUP_PATH=/volume1/backups/okffs
-   BACKUP_PASSWORD=yourpassword
-   BACKUP_PORT=22                   # optional, defaults to 22
-   ```
-
-   All four of `BACKUP_USER`, `BACKUP_SERVER`, `BACKUP_PATH`, and `BACKUP_PASSWORD` are required. If `.env` is missing or incomplete the hook skips the backup with a warning rather than blocking the push.
-
-### Behaviour
-
-- On each push, files changed in `HEAD` are copied to `BACKUP_PATH` on the server, preserving their repo-relative paths.
-- If the server is unreachable or a file fails to transfer, it is added to a retry queue (`logs/.backup-queue`) and flushed on the next successful push.
-- Activity is logged to `logs/.pre-push.log`. Both `logs/` and `.env` are git-ignored.
