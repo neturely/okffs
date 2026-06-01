@@ -17,6 +17,10 @@ node_modules/
 # Personal/local notes (not for the public repo)
 instructions
 
+# Claude Code — ignore local settings but keep agents
+.claude/settings.json
+.claude/settings.local.json
+
 # Editor/IDE
 .vscode/
 .idea/

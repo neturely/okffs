@@ -66,3 +66,15 @@ close-42-add-hero-section-to-homepage
 ## Local setup
 
 - `.env` holds the GitHub PAT (`GITHUB_TOKEN`) with `repo` + `project` scopes. It is git-ignored — see [.env.example](.env.example).
+
+## Codebase search
+
+This project uses [semble](https://github.com/MinishLab/semble) for semantic code search. The MCP server is registered at the user level (`~/.claude.json`) and a dedicated sub-agent is configured at `.claude/agents/semble-search.md`.
+
+**Claude Code should use the `semble-search` sub-agent for any exploratory or semantic codebase questions** — finding implementations, understanding how something works, locating related code — instead of grep/glob/read directly.
+
+To search manually:
+
+```bash
+uvx --from "semble[mcp]" semble search "your query" .
+```

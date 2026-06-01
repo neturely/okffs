@@ -92,3 +92,13 @@ close-42-add-hero-section-to-homepage
 - Tools confirm before bulk-creating (safety first).
 - GitHub is always the source of truth for issue state — never local.
 - Keep the tool surface minimal: do one thing well per tool.
+
+## Codebase search
+
+This project uses [semble](https://github.com/MinishLab/semble) for semantic code search via MCP. The sub-agent config lives at `.claude/agents/semble-search.md` and is picked up automatically by Claude Code.
+
+To search manually (requires `uv`):
+
+```bash
+uvx --from "semble[mcp]" semble search "your query" .
+```
