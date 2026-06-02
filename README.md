@@ -16,7 +16,7 @@ This project is being built in phases. See [CLAUDE.md](CLAUDE.md) for the full r
 
 | Phase | Scope | Status |
 |------|-------|--------|
-| 1 | Core MCP server — `create_issue`, `list_issues`, `close_issue` | **Complete** |
+| 1 | Core MCP server — `create_issue`, `list_issues`, `close_issue`, `delete_issue`, `delete_branch` | **Complete** |
 | 2 | Bulk creation — `create_issues_from_list` | Planned |
 | 3 | Claude.ai bridge — markdown paste format + `/push-to-github` | Planned |
 | 4 | Auto-close on merge — embed `Closes #N` in PR body | Planned |
@@ -90,7 +90,11 @@ Files excluded from the published package are listed in [.npmignore](.npmignore)
 |------|-------------|
 | `create_issue` | Creates a GitHub issue and a corresponding branch. Returns issue URL, number, and branch name. Applies `OKFFS_DEFAULT_ASSIGNEES` / `OKFFS_DEFAULT_LABELS` from `.env` when not supplied explicitly. |
 | `list_issues` | Lists all open issues with their issue URL and branch URL. |
-| `close_issue` | Closes a GitHub issue by number. |
+| `close_issue` | Closes a GitHub issue by number. Posts a comment noting the branch remains open. |
+| `delete_issue` | Closes an issue **and** deletes its matching branch. Destructive — requires `confirmed: true`. |
+| `delete_branch` | Deletes a branch **and** closes its matching issue. Destructive — requires `confirmed: true`. |
+
+Destructive tools (`delete_issue`, `delete_branch`) follow a two-step confirmation pattern: call once to see a warning, then re-call with `confirmed: true` to proceed. A comment is posted to the issue before any action is taken.
 
 ## Conventions
 
@@ -107,7 +111,7 @@ Files excluded from the published package are listed in [.npmignore](.npmignore)
 
 **Operating principles:**
 
-- Tools confirm before bulk-creating (safety first).
+- Destructive tools require `confirmed: true` — call once for a warning, re-call to proceed. Bulk-creating tools confirm before acting.
 - GitHub is always the source of truth for issue state — never local.
 - Keep the tool surface minimal: do one thing well per tool.
 

@@ -1,8 +1,8 @@
 const BASE = "https://api.github.com";
 
 const token = process.env.GITHUB_TOKEN;
-const owner = process.env.GITHUB_OWNER;
-const repo = process.env.GITHUB_REPO;
+export const owner = process.env.GITHUB_OWNER;
+export const repo = process.env.GITHUB_REPO;
 
 if (!token || !owner || !repo) {
   throw new Error("GITHUB_TOKEN, GITHUB_OWNER, and GITHUB_REPO must be set");
@@ -23,6 +23,10 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   if (!res.ok) {
     const body = await res.text();
     throw new Error(`GitHub API error ${res.status}: ${body}`);
+  }
+
+  if (res.status === 204) {
+    return undefined as unknown as T;
   }
 
   return res.json() as Promise<T>;
@@ -82,4 +86,27 @@ export async function closeIssue(issueNumber: number): Promise<void> {
     method: "PATCH",
     body: JSON.stringify({ state: "closed" }),
   });
+}
+
+export async function getIssue(issueNumber: number): Promise<{ number: number; title: string; html_url: string; body: string | null }> {
+  return request(`/repos/${owner}/${repo}/issues/${issueNumber}`);
+}
+
+export async function addIssueComment(issueNumber: number, body: string): Promise<void> {
+  await request(`/repos/${owner}/${repo}/issues/${issueNumber}/comments`, {
+    method: "POST",
+    body: JSON.stringify({ body }),
+  });
+}
+
+export async function deleteBranch(branchName: string): Promise<void> {
+  await request(`/repos/${owner}/${repo}/git/refs/heads/${branchName}`, {
+    method: "DELETE",
+  });
+}
+
+export function extractBranchFromBody(body: string | null): string | null {
+  if (!body) return null;
+  const match = body.match(/\*\*Branch:\*\*\s+`([^`]+)`/);
+  return match ? match[1] : null;
 }

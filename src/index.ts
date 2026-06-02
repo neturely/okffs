@@ -9,8 +9,10 @@ import { zodToJsonSchema } from "zod-to-json-schema";
 import * as createIssue from "./tools/create_issue.js";
 import * as listIssues from "./tools/list_issues.js";
 import * as closeIssue from "./tools/close_issue.js";
+import * as deleteIssue from "./tools/delete_issue.js";
+import * as deleteBranch from "./tools/delete_branch.js";
 
-const tools = [createIssue, listIssues, closeIssue];
+const tools = [createIssue, listIssues, closeIssue, deleteIssue, deleteBranch];
 
 const server = new Server(
   { name: "okffs", version: "0.0.1" },

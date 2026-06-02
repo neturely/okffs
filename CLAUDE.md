@@ -14,7 +14,7 @@ Guidance for Claude Code when working in this repository.
 
 ## Conventions
 
-- **All tools confirm before bulk-creating** — safety first.
+- **Destructive tools require `confirmed: true`** — call once for a warning, re-call to proceed.
 - **GitHub is the source of truth** for issue state, never local.
 - **Keep the tool surface minimal** — do one thing well per tool.
 
@@ -36,9 +36,12 @@ Guidance for Claude Code when working in this repository.
 ### Phase 1 — Core MCP server ✓ Complete
 - TypeScript MCP server scaffolded.
 - PAT auth via `.env` (`GITHUB_TOKEN`, `GITHUB_OWNER`, `GITHUB_REPO`).
-- Tools: `create_issue`, `list_issues`, `close_issue`.
+- Tools: `create_issue`, `list_issues`, `close_issue`, `delete_issue`, `delete_branch`.
 - `create_issue` auto-creates a branch, embeds the branch name in the issue body, and surfaces default assignees/labels from `.env` (shown as `(default)` in output).
 - `list_issues` returns each issue with its issue URL and inferred branch URL.
+- `close_issue` closes the issue and posts a comment noting the branch remains open (branch name extracted from the embedded `**Branch:**` line).
+- `delete_issue` closes an issue and deletes its branch. Two-step: call once for a warning, re-call with `confirmed: true` to proceed. Posts a comment to the issue before acting.
+- `delete_branch` deletes a branch and closes its issue (issue number parsed from branch name prefix). Same two-step confirmation pattern.
 - Optional `.env` defaults: `OKFFS_DEFAULT_ASSIGNEES`, `OKFFS_DEFAULT_LABELS`, `OKFFS_PROMPT_METADATA`.
 
 ### Phase 2 — Bulk creation
