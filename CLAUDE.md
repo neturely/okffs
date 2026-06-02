@@ -14,16 +14,16 @@ Guidance for Claude Code when working in this repository.
 
 ## Conventions
 
-- **All tools confirm before bulk-creating** — safety first.
+- **Destructive tools require `confirmed: true`** — call once for a warning, re-call to proceed.
 - **GitHub is the source of truth** for issue state, never local.
 - **Keep the tool surface minimal** — do one thing well per tool.
 
 ### Branch naming
 
-`close-{issue-number}-{kebab-title-slug}` — title truncated to ~5 words, no forward slashes.
+`{issue-number}-{kebab-title-slug}` — title truncated to ~5 words, no forward slashes.
 
 ```
-close-42-add-hero-section-to-homepage
+42-add-hero-section-to-homepage
 ```
 
 ### Pull requests
@@ -33,11 +33,16 @@ close-42-add-hero-section-to-homepage
 
 ## Build phases
 
-### Phase 1 — Core MCP server
-- Scaffold the TypeScript MCP server.
-- PAT auth via `.env`.
-- Tools: `create_issue`, `create_branch`, `list_issues`, `close_issue`.
-- Single issue + branch creation, end to end.
+### Phase 1 — Core MCP server ✓ Complete
+- TypeScript MCP server scaffolded.
+- PAT auth via `.env` (`GITHUB_TOKEN`, `GITHUB_OWNER`, `GITHUB_REPO`).
+- Tools: `create_issue`, `list_issues`, `close_issue`, `delete_issue`, `delete_branch`.
+- `create_issue` auto-creates a branch, embeds the branch name in the issue body, and surfaces default assignees/labels from `.env` (shown as `(default)` in output).
+- `list_issues` returns each issue with its issue URL and inferred branch URL.
+- `close_issue` closes the issue and posts a comment noting the branch remains open (branch name extracted from the embedded `**Branch:**` line).
+- `delete_issue` closes an issue and deletes its branch. Two-step: call once for a warning, re-call with `confirmed: true` to proceed. Posts a comment to the issue before acting.
+- `delete_branch` deletes a branch and closes its issue (issue number parsed from branch name prefix). Same two-step confirmation pattern.
+- Optional `.env` defaults: `OKFFS_DEFAULT_ASSIGNEES`, `OKFFS_DEFAULT_LABELS`, `OKFFS_PROMPT_METADATA`.
 
 ### Phase 2 — Bulk creation
 - `create_issues_from_list` tool.
@@ -66,3 +71,16 @@ close-42-add-hero-section-to-homepage
 ## Local setup
 
 - `.env` holds the GitHub PAT (`GITHUB_TOKEN`) with `repo` + `project` scopes. It is git-ignored — see [.env.example](.env.example).
+- Optional defaults applied to every new issue: `OKFFS_DEFAULT_ASSIGNEES` (comma-separated), `OKFFS_DEFAULT_LABELS` (comma-separated), `OKFFS_PROMPT_METADATA` (set to `false` to silence the tip).
+
+## Codebase search
+
+This project uses [semble](https://github.com/MinishLab/semble) for semantic code search. The MCP server is registered at the user level (`~/.claude.json`) and a dedicated sub-agent is configured at `.claude/agents/semble-search.md`.
+
+**Claude Code should use the `semble-search` sub-agent for any exploratory or semantic codebase questions** — finding implementations, understanding how something works, locating related code — instead of grep/glob/read directly.
+
+To search manually:
+
+```bash
+uvx --from "semble[mcp]" semble search "your query" .
+```

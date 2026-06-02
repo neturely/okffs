@@ -1,18 +1,42 @@
 {
   "name": "okffs",
-  "version": "0.0.2",
-  "description": "MCP server for GitHub issue and branch management. Coming soon.",
+  "version": "0.1.0",
+  "description": "MCP server that connects Claude Code to GitHub — create and manage issues and branches without leaving your editor.",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "okffs": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "node --env-file=.env --import tsx/esm src/index.ts",
+    "start": "node --env-file=.env dist/index.js"
+  },
   "keywords": [
     "mcp",
     "github",
     "issues",
     "branches",
-    "cli"
+    "claude",
+    "claude-code",
+    "model-context-protocol",
+    "developer-tools"
   ],
   "author": "2b9sa2owa",
   "license": "MIT",
+  "homepage": "https://github.com/2b9sa2owa/okffs#readme",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/2b9sa2owa/okffs.git"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "zod": "^3.23.8",
+    "zod-to-json-schema": "^3.23.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.4.0"
   }
 }

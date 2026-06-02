@@ -1,5 +1,11 @@
-.claude/
+src/
+.env
 .env.example
+.github/
 .githooks/
-CLAUDE.md
-.gitignore
+.claude/
+logs/
+tsconfig.json
+instructions
+*.md
+!README.md
