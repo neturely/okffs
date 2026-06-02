@@ -2,6 +2,10 @@ src/
 .env
 .env.example
 .github/
+.githooks/
+.claude/
+logs/
 tsconfig.json
+instructions
 *.md
 !README.md
