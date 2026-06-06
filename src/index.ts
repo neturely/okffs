@@ -1,3 +1,5 @@
+import "dotenv/config";
+
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
@@ -11,8 +13,11 @@ import * as listIssues from "./tools/list_issues.js";
 import * as closeIssue from "./tools/close_issue.js";
 import * as deleteIssue from "./tools/delete_issue.js";
 import * as deleteBranch from "./tools/delete_branch.js";
+import * as getIssue from "./tools/get_issue.js";
+import * as commentIssue from "./tools/comment_issue.js";
+import * as createIssuesFromList from "./tools/create_issues_from_list.js";
 
-const tools = [createIssue, listIssues, closeIssue, deleteIssue, deleteBranch];
+const tools = [createIssue, listIssues, closeIssue, deleteIssue, deleteBranch, getIssue, commentIssue, createIssuesFromList];
 
 const server = new Server(
   { name: "okffs", version: "0.0.1" },

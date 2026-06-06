@@ -5,20 +5,23 @@ import { config } from "../config.js";
 export const name = "create_issue";
 
 export const description =
-  "Create a GitHub issue and a corresponding branch. Returns the issue URL, issue number, and branch name.";
+  "Create a GitHub issue and automatically create a matching branch. Before calling this tool, infer appropriate labels from the issue title and description using GitHub's default labels: bug, documentation, duplicate, enhancement, good first issue, help wanted, invalid, question, wontfix. Pass the inferred labels in the labels parameter unless the user has specified their own. Returns the issue URL, issue number, and branch name.";
 
 export const inputSchema = z.object({
   title: z.string().describe("Issue title"),
   description: z.string().describe("Issue body / description"),
   assignees: z.array(z.string()).optional().describe("GitHub usernames to assign"),
   labels: z.array(z.string()).optional().describe("Labels to apply e.g. bug, feature"),
+  milestone: z.number().int().optional().describe("Milestone number to assign"),
 });
 
 export async function handler(input: z.infer<typeof inputSchema>) {
   const resolvedAssignees = input.assignees ?? config.defaultAssignees;
-  const resolvedLabels = input.labels ?? config.defaultLabels;
+  const resolvedLabels = [
+    ...new Set([...(input.labels ?? []), ...config.defaultLabels])
+  ];
 
-  const issue = await createIssue(input.title, input.description, resolvedAssignees, resolvedLabels);
+  const issue = await createIssue(input.title, input.description, resolvedAssignees, resolvedLabels, input.milestone);
 
   const branchName = `${issue.number}-${slugify(input.title)}`;
 
