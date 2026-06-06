@@ -6,4 +6,5 @@ export const config = {
   defaultLabels: process.env.OKFFS_DEFAULT_LABELS
     ? process.env.OKFFS_DEFAULT_LABELS.split(",").map((s) => s.trim())
     : [],
+  baseBranch: process.env.OKFFS_BASE_BRANCH || null,
 };

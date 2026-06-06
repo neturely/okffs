@@ -16,8 +16,8 @@ This project is being built in phases. See [CLAUDE.md](CLAUDE.md) for the full r
 
 | Phase | Scope | Status |
 |------|-------|--------|
-| 1 | Core MCP server — `create_issue`, `list_issues`, `close_issue`, `delete_issue`, `delete_branch` | **Complete** |
-| 2 | Bulk creation — `create_issues_from_list` | Planned |
+| 1 | Core MCP server — `create_issue`, `list_issues`, `close_issue`, `delete_issue`, `delete_branch`, `get_issue`, `comment_issue` | **Complete** |
+| 2 | Bulk creation — `create_issues_from_list` | **Complete** |
 | 3 | Claude.ai bridge — markdown paste format + `/push-to-github` | Planned |
 | 4 | Auto-close on merge — embed `Closes #N` in PR body | Planned |
 | 5 | GitHub Projects v2 (optional) | Planned |
@@ -81,15 +81,21 @@ Files excluded from the published package are listed in [.npmignore](.npmignore)
    ```env
    OKFFS_DEFAULT_ASSIGNEES=your-github-username
    OKFFS_DEFAULT_LABELS=feature,bug
-   OKFFS_PROMPT_METADATA=true   # set to false to hide the assignees/labels tip
+   OKFFS_PROMPT_METADATA=true        # set to false to hide the assignees/labels tip
+   OKFFS_BASE_BRANCH=main            # branch to create issues from; defaults to repo default branch
    ```
+
+   The `.env` file is loaded automatically from whichever directory the MCP server starts in — no `--env-file` flag needed.
 
 ## Tools
 
 | Tool | Description |
 |------|-------------|
-| `create_issue` | Creates a GitHub issue and a corresponding branch. Returns issue URL, number, and branch name. Applies `OKFFS_DEFAULT_ASSIGNEES` / `OKFFS_DEFAULT_LABELS` from `.env` when not supplied explicitly. |
+| `create_issue` | Creates a GitHub issue and a matching branch. Infers labels automatically; merges them with `OKFFS_DEFAULT_LABELS`. Supports optional `milestone`. |
+| `create_issues_from_list` | Creates multiple issues and branches from a task list in one shot. Confirms before acting. |
 | `list_issues` | Lists all open issues with their issue URL and branch URL. |
+| `get_issue` | Fetches full details of an issue — title, body, labels, assignees, branch, and status. |
+| `comment_issue` | Posts a comment to an issue. Useful for logging work done on a branch. |
 | `close_issue` | Closes a GitHub issue by number. Posts a comment noting the branch remains open. |
 | `delete_issue` | Closes an issue **and** deletes its matching branch. Destructive — requires `confirmed: true`. |
 | `delete_branch` | Deletes a branch **and** closes its matching issue. Destructive — requires `confirmed: true`. |

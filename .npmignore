@@ -1,6 +1,7 @@
 src/
 .env
 .env.example
+.mcp.json
 .github/
 .githooks/
 .claude/

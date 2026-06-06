@@ -36,17 +36,23 @@ Guidance for Claude Code when working in this repository.
 ### Phase 1 — Core MCP server ✓ Complete
 - TypeScript MCP server scaffolded.
 - PAT auth via `.env` (`GITHUB_TOKEN`, `GITHUB_OWNER`, `GITHUB_REPO`).
-- Tools: `create_issue`, `list_issues`, `close_issue`, `delete_issue`, `delete_branch`.
-- `create_issue` auto-creates a branch, embeds the branch name in the issue body, and surfaces default assignees/labels from `.env` (shown as `(default)` in output).
+- `.env` is loaded automatically via `dotenv` from `process.cwd()` — no `--env-file` flag needed in `.mcp.json`.
+- Tools: `create_issue`, `list_issues`, `close_issue`, `delete_issue`, `delete_branch`, `get_issue`, `comment_issue`.
+- `create_issue` auto-creates a branch, embeds the branch name in the issue body, and surfaces default assignees/labels from `.env` (shown as `(default)` in output). Infers labels automatically; merges inferred labels with `OKFFS_DEFAULT_LABELS`. Supports optional `milestone`.
 - `list_issues` returns each issue with its issue URL and inferred branch URL.
+- `get_issue` fetches full issue details — title, body, status, branch, assignees, labels.
+- `comment_issue` posts a comment to an issue. Use after committing to log what was done.
 - `close_issue` closes the issue and posts a comment noting the branch remains open (branch name extracted from the embedded `**Branch:**` line).
 - `delete_issue` closes an issue and deletes its branch. Two-step: call once for a warning, re-call with `confirmed: true` to proceed. Posts a comment to the issue before acting.
 - `delete_branch` deletes a branch and closes its issue (issue number parsed from branch name prefix). Same two-step confirmation pattern.
-- Optional `.env` defaults: `OKFFS_DEFAULT_ASSIGNEES`, `OKFFS_DEFAULT_LABELS`, `OKFFS_PROMPT_METADATA`.
+- Optional `.env` defaults: `OKFFS_DEFAULT_ASSIGNEES`, `OKFFS_DEFAULT_LABELS`, `OKFFS_PROMPT_METADATA`, `OKFFS_BASE_BRANCH`.
+- `OKFFS_BASE_BRANCH` — set to override the base branch for new issue branches (skips the GitHub API call). Defaults to the repo's default branch.
 
-### Phase 2 — Bulk creation
+### Phase 2 — Bulk creation ✓ Complete
 - `create_issues_from_list` tool.
-- Accepts a markdown task list; creates all issues + branches in one shot.
+- Accepts a list of tasks; creates all issues + branches in one shot.
+- Two-step confirmation: call once to preview, re-call with `confirmed: true` to proceed.
+- Per-task `labels`, `assignees`, and `milestone` supported; labels merged with `OKFFS_DEFAULT_LABELS`.
 - Auto-generates branch names from issue number + title slug.
 
 ### Phase 3 — Claude.ai bridge
@@ -71,7 +77,8 @@ Guidance for Claude Code when working in this repository.
 ## Local setup
 
 - `.env` holds the GitHub PAT (`GITHUB_TOKEN`) with `repo` + `project` scopes. It is git-ignored — see [.env.example](.env.example).
-- Optional defaults applied to every new issue: `OKFFS_DEFAULT_ASSIGNEES` (comma-separated), `OKFFS_DEFAULT_LABELS` (comma-separated), `OKFFS_PROMPT_METADATA` (set to `false` to silence the tip).
+- `.env` is loaded automatically at startup via `dotenv` from `process.cwd()`. No `--env-file` flag required in `.mcp.json`.
+- Optional defaults applied to every new issue: `OKFFS_DEFAULT_ASSIGNEES` (comma-separated), `OKFFS_DEFAULT_LABELS` (comma-separated), `OKFFS_PROMPT_METADATA` (set to `false` to silence the tip), `OKFFS_BASE_BRANCH` (branch to create from; defaults to repo default branch).
 
 ## Codebase search
 

@@ -1,3 +1,5 @@
+import { config } from "./config.js";
+
 const BASE = "https://api.github.com";
 
 const token = process.env.GITHUB_TOKEN;
@@ -46,11 +48,12 @@ export async function createIssue(
   title: string,
   body: string,
   assignees?: string[],
-  labels?: string[]
+  labels?: string[],
+  milestone?: number
 ): Promise<{ number: number; html_url: string }> {
   return request(`/repos/${owner}/${repo}/issues`, {
     method: "POST",
-    body: JSON.stringify({ title, body, assignees, labels }),
+    body: JSON.stringify({ title, body, assignees, labels, ...(milestone !== undefined && { milestone }) }),
   });
 }
 
@@ -62,6 +65,7 @@ export async function updateIssueBody(issueNumber: number, body: string): Promis
 }
 
 export async function getDefaultBranch(): Promise<string> {
+  if (config.baseBranch) return config.baseBranch;
   const data = await request<{ default_branch: string }>(`/repos/${owner}/${repo}`);
   return data.default_branch;
 }
