@@ -22,6 +22,40 @@ This project is being built in phases. See [CLAUDE.md](CLAUDE.md) for the full r
 | 4 | Auto-close on merge — embed `Closes #N` in PR body | Planned |
 | 5 | GitHub Projects v2 (optional) | Planned |
 
+## Usage with Claude Code
+
+Add okffs to any project by creating a `.mcp.json` in the project root:
+
+```json
+{
+  "mcpServers": {
+    "okffs": {
+      "command": "npx",
+      "args": ["okffs"]
+    }
+  }
+}
+```
+
+Create a `.env` file in the same directory with your GitHub credentials:
+
+```env
+GITHUB_TOKEN=ghp_your_personal_access_token_here
+GITHUB_OWNER=your-github-username
+GITHUB_REPO=your-repo-name
+```
+
+okffs loads `.env` automatically from the directory it starts in — no `--env-file` flag needed.
+
+Once configured, Claude Code will pick up the tools automatically. You can ask Claude things like:
+
+- *"Create an issue called 'Fix login button' with description '...'"*
+- *"List all open issues"*
+- *"Create issues from this task list: ..."*
+- *"Post a comment to issue #12 saying what was done"*
+
+Claude infers appropriate labels (`bug`, `enhancement`, etc.) from the issue title and description, and merges them with your `OKFFS_DEFAULT_LABELS`.
+
 ## Publishing to npm
 
 Requires an npm account with maintainer access to the `okffs` package.
@@ -52,23 +86,29 @@ Files excluded from the published package are listed in [.npmignore](.npmignore)
 ### Prerequisites
 
 - Node.js (LTS) and npm
-- A GitHub Personal Access Token with `repo` and `project` scopes
+- A GitHub Personal Access Token with `repo` and `project` scopes — [create one here](https://github.com/settings/tokens)
 
-### Setup
+### Quick start (recommended)
 
-1. Install dependencies:
+No installation needed. Add the `.mcp.json` and `.env` to your project as shown in [Usage with Claude Code](#usage-with-claude-code) above — `npx` fetches okffs automatically on first use.
+
+### Local development setup
+
+1. Clone the repo and install dependencies:
 
    ```bash
+   git clone https://github.com/2b9sa2owa/okffs.git
+   cd okffs
    npm install
    ```
 
-2. Copy the environment template and add your token:
+2. Copy the environment template and fill in your credentials:
 
    ```bash
    cp .env.example .env
    ```
 
-   Set `GITHUB_TOKEN` in `.env` (git-ignored, never committed):
+   Required vars:
 
    ```env
    GITHUB_TOKEN=ghp_your_personal_access_token_here
@@ -79,13 +119,28 @@ Files excluded from the published package are listed in [.npmignore](.npmignore)
 3. Optionally set defaults applied to every new issue:
 
    ```env
-   OKFFS_DEFAULT_ASSIGNEES=your-github-username
-   OKFFS_DEFAULT_LABELS=feature,bug
-   OKFFS_PROMPT_METADATA=true        # set to false to hide the assignees/labels tip
-   OKFFS_BASE_BRANCH=main            # branch to create issues from; defaults to repo default branch
+   OKFFS_DEFAULT_ASSIGNEES=your-github-username   # comma-separated
+   OKFFS_DEFAULT_LABELS=feature,bug               # merged with any inferred labels
+   OKFFS_PROMPT_METADATA=true                     # set to false to hide the tip
+   OKFFS_BASE_BRANCH=main                         # branch to create issues from; defaults to repo default
    ```
 
-   The `.env` file is loaded automatically from whichever directory the MCP server starts in — no `--env-file` flag needed.
+4. Build and point your `.mcp.json` at the local build:
+
+   ```bash
+   npm run build
+   ```
+
+   ```json
+   {
+     "mcpServers": {
+       "okffs": {
+         "command": "node",
+         "args": ["/absolute/path/to/okffs/dist/index.js"]
+       }
+     }
+   }
+   ```
 
 ## Tools
 
