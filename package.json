@@ -9,6 +9,7 @@
   },
   "scripts": {
     "build": "tsc",
+    "postbuild": "node -e \"const fs=require('fs');const f='dist/index.js';const c=fs.readFileSync(f,'utf8');if(!c.startsWith('#!/usr/bin/env node'))fs.writeFileSync(f,'#!/usr/bin/env node\\n'+c);\" && chmod +x dist/index.js",
     "dev": "node --env-file=.env --import tsx/esm src/index.ts",
     "start": "node --env-file=.env dist/index.js"
   },
