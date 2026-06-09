@@ -185,3 +185,8 @@ To search manually (requires `uv`):
 ```bash
 uvx --from "semble[mcp]" semble search "your query" .
 ```
+
+## Recent Changes
+- 2026-06-09 — closes #14: Closed: Test label fix. Verifying okffs default label and inferred label are both applied correctly
+
+**Branch:** `14-test-label-fix`
