@@ -1,5 +1,7 @@
 import { z } from "zod";
 import { closeIssue, getIssue, addIssueComment, extractBranchFromBody, owner, repo } from "../github.js";
+import { config } from "../config.js";
+import { updateProjectDocs } from "../docs.js";
 
 export const name = "close_issue";
 
@@ -22,6 +24,22 @@ export async function handler(input: z.infer<typeof inputSchema>) {
       `No action has been taken on the branch.`,
     ].join("\n");
     await addIssueComment(input.issue_number, comment);
+  }
+
+  if (config.updateDocs) {
+    await updateProjectDocs({
+      trigger: "close_issue",
+      issueNumber: input.issue_number,
+      issueTitle: issue.title,
+      summary: issue.body
+        ? issue.body
+            .replace(/\*\*Branch:\*\*\s*`[^`]+`/g, "")
+            .replace(/## Relationships[\s\S]*/g, "")
+            .trim()
+            .slice(0, 200)
+        : issue.title,
+      branchName: branchName ?? undefined,
+    });
   }
 
   return {

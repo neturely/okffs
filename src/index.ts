@@ -17,8 +17,9 @@ import * as deleteBranch from "./tools/delete_branch.js";
 import * as getIssue from "./tools/get_issue.js";
 import * as commentIssue from "./tools/comment_issue.js";
 import * as createIssuesFromList from "./tools/create_issues_from_list.js";
+import * as linkIssues from "./tools/link_issues.js";
 
-const tools = [createIssue, listIssues, closeIssue, deleteIssue, deleteBranch, getIssue, commentIssue, createIssuesFromList];
+const tools = [createIssue, listIssues, closeIssue, deleteIssue, deleteBranch, getIssue, commentIssue, createIssuesFromList, linkIssues];
 
 const server = new Server(
   { name: "okffs", version: "0.0.1" },

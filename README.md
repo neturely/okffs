@@ -31,7 +31,7 @@ Add okffs to any project by creating a `.mcp.json` in the project root:
   "mcpServers": {
     "okffs": {
       "command": "npx",
-      "args": ["okffs"]
+      "args": ["okffs@latest"]
     }
   }
 }
@@ -151,6 +151,7 @@ No installation needed. Add the `.mcp.json` and `.env` to your project as shown 
 | `list_issues` | Lists all open issues with their issue URL and branch URL. |
 | `get_issue` | Fetches full details of an issue — title, body, labels, assignees, branch, and status. |
 | `comment_issue` | Posts a comment to an issue. Useful for logging work done on a branch. |
+| `link_issues` | Links two issues with a relationship (blocked by, blocking, or parent). Relationship is stored in the issue body under a `## Relationships` section. |
 | `close_issue` | Closes a GitHub issue by number. Posts a comment noting the branch remains open. |
 | `delete_issue` | Closes an issue **and** deletes its matching branch. Destructive — requires `confirmed: true`. |
 | `delete_branch` | Deletes a branch **and** closes its matching issue. Destructive — requires `confirmed: true`. |
@@ -186,7 +187,3 @@ To search manually (requires `uv`):
 uvx --from "semble[mcp]" semble search "your query" .
 ```
 
-## Recent Changes
-- 2026-06-09 — closes #14: Closed: Test label fix. Verifying okffs default label and inferred label are both applied correctly
-
-**Branch:** `14-test-label-fix`

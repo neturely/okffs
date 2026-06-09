@@ -42,6 +42,7 @@ Guidance for Claude Code when working in this repository.
 - `list_issues` returns each issue with its issue URL and inferred branch URL.
 - `get_issue` fetches full issue details — title, body, status, branch, assignees, labels.
 - `comment_issue` posts a comment to an issue. Use after committing to log what was done.
+- `link_issues` links two issues with a relationship — `blocked_by`, `blocking`, or `parent`. Stored in the issue body under a `## Relationships` section. Claude Code will call this automatically after `create_issue` if a relationship is mentioned.
 - `close_issue` closes the issue and posts a comment noting the branch remains open (branch name extracted from the embedded `**Branch:**` line).
 - `delete_issue` closes an issue and deletes its branch. Two-step: call once for a warning, re-call with `confirmed: true` to proceed. Posts a comment to the issue before acting.
 - `delete_branch` deletes a branch and closes its issue (issue number parsed from branch name prefix). Same two-step confirmation pattern.
@@ -67,6 +68,12 @@ Guidance for Claude Code when working in this repository.
 - Add issues to a GitHub Project board on creation.
 - Update status fields as work progresses.
 - Requires the GraphQL API.
+
+### Phase 6 — Project site
+- Set up `okffs.g2mk.dev` subdomain on Cloudflare (point to Knowhost).
+- Build static site pulling live data from npm Registry API and GitHub API.
+- Display: README content, install command, version, download stats, GitHub stars, license.
+- Design as a reusable template for future projects under `g2mk.dev`.
 
 ## Publishing targets
 
