@@ -17,6 +17,7 @@ Guidance for Claude Code when working in this repository.
 - **Destructive tools require `confirmed: true`** — call once for a warning, re-call to proceed.
 - **GitHub is the source of truth** for issue state, never local.
 - **Keep the tool surface minimal** — do one thing well per tool.
+- **Destructive actions post a comment to the issue before acting.**
 
 ### Branch naming
 
@@ -34,39 +35,55 @@ Guidance for Claude Code when working in this repository.
 ## Build phases
 
 ### Phase 1 — Core MCP server ✓ Complete
+
 - TypeScript MCP server scaffolded.
 - PAT auth via `.env` (`GITHUB_TOKEN`, `GITHUB_OWNER`, `GITHUB_REPO`).
 - `.env` is loaded automatically via `dotenv` from `process.cwd()` — no `--env-file` flag needed in `.mcp.json`.
-- Tools: `create_issue`, `list_issues`, `close_issue`, `delete_issue`, `delete_branch`, `get_issue`, `comment_issue`.
-- `create_issue` auto-creates a branch, embeds the branch name in the issue body, and surfaces default assignees/labels from `.env` (shown as `(default)` in output). Infers labels automatically; merges inferred labels with `OKFFS_DEFAULT_LABELS`. Supports optional `milestone`.
+- Tools: `create_issue`, `list_issues`, `close_issue`, `delete_issue`, `delete_branch`, `get_issue`, `comment_issue`, `link_issues`, `create_issues_from_list`.
+- `create_issue` auto-creates a branch, embeds the branch name in the issue body, applies default assignees/labels from `.env`, infers labels from title/description and merges with `OKFFS_DEFAULT_LABELS`. Supports optional `assignees`, `labels`, `milestone`. If a relationship is mentioned (blocked by, blocking, parent), automatically calls `link_issues` after creation.
+- `create_issues_from_list` accepts a list of tasks and creates all issues + branches in one shot. Two-step confirmation. Per-task `labels`, `assignees`, and `milestone` supported.
 - `list_issues` returns each issue with its issue URL and inferred branch URL.
 - `get_issue` fetches full issue details — title, body, status, branch, assignees, labels.
 - `comment_issue` posts a comment to an issue. Use after committing to log what was done.
+- `link_issues` links two issues with a relationship — `blocked_by`, `blocking`, or `parent`. Stored in the issue body under a `## Relationships` section.
 - `close_issue` closes the issue and posts a comment noting the branch remains open (branch name extracted from the embedded `**Branch:**` line).
-- `delete_issue` closes an issue and deletes its branch. Two-step: call once for a warning, re-call with `confirmed: true` to proceed. Posts a comment to the issue before acting.
-- `delete_branch` deletes a branch and closes its issue (issue number parsed from branch name prefix). Same two-step confirmation pattern.
-- Optional `.env` defaults: `OKFFS_DEFAULT_ASSIGNEES`, `OKFFS_DEFAULT_LABELS`, `OKFFS_PROMPT_METADATA`, `OKFFS_BASE_BRANCH`.
-- `OKFFS_BASE_BRANCH` — set to override the base branch for new issue branches (skips the GitHub API call). Defaults to the repo's default branch.
+- `delete_issue` closes an issue and deletes its branch. Two-step: call once for a warning, re-call with `confirmed: true` to proceed. Posts a comment before acting.
+- `delete_branch` deletes a branch and closes its issue (issue number parsed from branch name prefix). Same two-step confirmation pattern. Posts a comment before acting.
+- Optional `.env` defaults: `OKFFS_DEFAULT_ASSIGNEES`, `OKFFS_DEFAULT_LABELS`, `OKFFS_PROMPT_METADATA`, `OKFFS_BASE_BRANCH`, `OKFFS_UPDATE_DOCS`.
+- `OKFFS_BASE_BRANCH` — branch to create new issue branches from. Defaults to the repo's default branch.
+- `OKFFS_UPDATE_DOCS` — set to `true` to auto-update local project docs (CHANGELOG.md, README.md, SECURITY.md, CONTRIBUTING.md) on workflow events. Default `false`. Changes are written locally — committing is the user's responsibility.
 
 ### Phase 2 — Bulk creation ✓ Complete
-- `create_issues_from_list` tool.
+
+- `create_issues_from_list` tool (included in Phase 1 tool surface).
 - Accepts a list of tasks; creates all issues + branches in one shot.
 - Two-step confirmation: call once to preview, re-call with `confirmed: true` to proceed.
 - Per-task `labels`, `assignees`, and `milestone` supported; labels merged with `OKFFS_DEFAULT_LABELS`.
 - Auto-generates branch names from issue number + title slug.
 
 ### Phase 3 — Claude.ai bridge
-- Define a standard markdown paste format to carry task lists from claude.ai into Claude Code.
-- Slash command (e.g. `/push-to-github`) that reads the task list and triggers Phase 2.
+
+- Define a standard markdown paste format to carry task lists from Claude.ai into Claude Code.
+- Slash command (e.g. `/push-to-github`) that reads the task list and triggers `create_issues_from_list`.
 
 ### Phase 4 — Auto-close on merge
-- Embed `Closes #42` in the PR body automatically on branch/PR creation.
-- GitHub natively closes the issue on merge — no webhook infrastructure needed.
+
+- `create_pull_request` tool — commits staged changes, pushes branch, opens PR against `OKFFS_BASE_BRANCH`, includes `Closes #N` in body, triggers doc update with full session summary.
+- Post a comment on the issue when the branch is merged and deleted — noting PR title, merge date, branch name.
+- GitHub natively closes the issue on merge via `Closes #N` — no webhook infrastructure needed.
 
 ### Phase 5 — GitHub Projects v2 (optional, later)
+
 - Add issues to a GitHub Project board on creation.
 - Update status fields as work progresses.
 - Requires the GraphQL API.
+
+### Phase 6 — Project site
+
+- Set up `okffs.g2mk.dev` subdomain on Cloudflare (point to Knowhost).
+- Build static site pulling live data from npm Registry API and GitHub API.
+- Display: README content, install command, version, download stats, GitHub stars, license.
+- Design as a reusable template for future projects under `g2mk.dev`.
 
 ## Publishing targets
 
@@ -76,9 +93,17 @@ Guidance for Claude Code when working in this repository.
 
 ## Local setup
 
-- `.env` holds the GitHub PAT (`GITHUB_TOKEN`) with `repo` + `project` scopes. It is git-ignored — see [.env.example](.env.example).
+- `.env` holds the GitHub PAT (`GITHUB_TOKEN`) with fine-grained permissions. It is git-ignored — see [.env.example](.env.example).
 - `.env` is loaded automatically at startup via `dotenv` from `process.cwd()`. No `--env-file` flag required in `.mcp.json`.
-- Optional defaults applied to every new issue: `OKFFS_DEFAULT_ASSIGNEES` (comma-separated), `OKFFS_DEFAULT_LABELS` (comma-separated), `OKFFS_PROMPT_METADATA` (set to `false` to silence the tip), `OKFFS_BASE_BRANCH` (branch to create from; defaults to repo default branch).
+- Required: `GITHUB_TOKEN`, `GITHUB_OWNER`, `GITHUB_REPO`.
+- Optional defaults: `OKFFS_DEFAULT_ASSIGNEES` (comma-separated), `OKFFS_DEFAULT_LABELS` (comma-separated), `OKFFS_PROMPT_METADATA` (set to `false` to silence the tip), `OKFFS_BASE_BRANCH` (branch to create from; defaults to repo default), `OKFFS_UPDATE_DOCS` (set to `true` to enable auto doc updates).
+
+## Local dev vs published package
+
+- **okffs dev repo** — `.mcp.json` points at local build: `{ "command": "node", "args": ["dist/index.js"] }`
+- **Consumer repos** — `.mcp.json` uses published package: `{ "command": "npx", "args": ["okffs@latest"] }`
+- New tools won't appear in consumer repos until a new version is published to npm.
+- After any build change in the okffs repo, restart Claude Code or run `/mcp` to pick up the updated `dist/index.js`.
 
 ## Codebase search
 

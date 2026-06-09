@@ -7,4 +7,5 @@ export const config = {
     ? process.env.OKFFS_DEFAULT_LABELS.split(",").map((s) => s.trim())
     : [],
   baseBranch: process.env.OKFFS_BASE_BRANCH || null,
+  updateDocs: process.env.OKFFS_UPDATE_DOCS === "true",
 };
