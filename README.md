@@ -16,11 +16,12 @@ This project is being built in phases. See [CLAUDE.md](CLAUDE.md) for the full r
 
 | Phase | Scope | Status |
 |------|-------|--------|
-| 1 | Core MCP server — `create_issue`, `list_issues`, `close_issue`, `delete_issue`, `delete_branch`, `get_issue`, `comment_issue` | **Complete** |
+| 1 | Core MCP server — `create_issue`, `list_issues`, `close_issue`, `delete_issue`, `delete_branch`, `get_issue`, `comment_issue`, `link_issues` | **Complete** |
 | 2 | Bulk creation — `create_issues_from_list` | **Complete** |
 | 3 | Claude.ai bridge — markdown paste format + `/push-to-github` | Planned |
-| 4 | Auto-close on merge — embed `Closes #N` in PR body | Planned |
+| 4 | Auto-close on merge — `create_pull_request`, embed `Closes #N` in PR body | Planned |
 | 5 | GitHub Projects v2 (optional) | Planned |
+| 6 | Project site — `okffs.g2mk.dev` | Planned |
 
 ## Usage with Claude Code
 
@@ -53,40 +54,17 @@ Once configured, Claude Code will pick up the tools automatically. You can ask C
 - *"List all open issues"*
 - *"Create issues from this task list: ..."*
 - *"Post a comment to issue #12 saying what was done"*
+- *"Mark issue #5 as blocked by issue #3"*
 
 Claude infers appropriate labels (`bug`, `enhancement`, etc.) from the issue title and description, and merges them with your `OKFFS_DEFAULT_LABELS`.
-
-## Publishing to npm
-
-Requires an npm account with maintainer access to the `okffs` package.
-
-1. Log in:
-
-   ```bash
-   npm login
-   ```
-
-2. Bump the version in `package.json` following [semver](https://semver.org/), then publish:
-
-   ```bash
-   npm version patch   # or minor / major
-   npm publish
-   ```
-
-3. Verify:
-
-   ```bash
-   npm show okffs
-   ```
-
-Files excluded from the published package are listed in [.npmignore](.npmignore).
 
 ## Getting started
 
 ### Prerequisites
 
 - Node.js (LTS) and npm
-- A GitHub Personal Access Token with `repo` and `project` scopes — [create one here](https://github.com/settings/tokens)
+- A GitHub Personal Access Token with fine-grained permissions — [create one here](https://github.com/settings/tokens)
+  - Required: Issues (read/write), Contents (read/write), Metadata (read), Pull requests (read/write), Administration (read/write)
 
 ### Quick start (recommended)
 
@@ -120,9 +98,10 @@ No installation needed. Add the `.mcp.json` and `.env` to your project as shown 
 
    ```env
    OKFFS_DEFAULT_ASSIGNEES=your-github-username   # comma-separated
-   OKFFS_DEFAULT_LABELS=feature,bug               # merged with any inferred labels
+   OKFFS_DEFAULT_LABELS=okffs                     # merged with any inferred labels
    OKFFS_PROMPT_METADATA=true                     # set to false to hide the tip
    OKFFS_BASE_BRANCH=main                         # branch to create issues from; defaults to repo default
+   OKFFS_UPDATE_DOCS=false                        # set to true to auto-update project docs on workflow events
    ```
 
 4. Build and point your `.mcp.json` at the local build:
@@ -136,7 +115,7 @@ No installation needed. Add the `.mcp.json` and `.env` to your project as shown 
      "mcpServers": {
        "okffs": {
          "command": "node",
-         "args": ["/absolute/path/to/okffs/dist/index.js"]
+         "args": ["dist/index.js"]
        }
      }
    }
@@ -146,17 +125,23 @@ No installation needed. Add the `.mcp.json` and `.env` to your project as shown 
 
 | Tool | Description |
 |------|-------------|
-| `create_issue` | Creates a GitHub issue and a matching branch. Infers labels automatically; merges them with `OKFFS_DEFAULT_LABELS`. Supports optional `milestone`. |
-| `create_issues_from_list` | Creates multiple issues and branches from a task list in one shot. Confirms before acting. |
+| `create_issue` | Creates a GitHub issue and a matching branch. Infers labels automatically; merges them with `OKFFS_DEFAULT_LABELS`. Supports optional `assignees`, `labels`, and `milestone`. |
+| `create_issues_from_list` | Creates multiple issues and branches from a task list in one shot. Confirms before acting. Per-task `labels`, `assignees`, and `milestone` supported. |
 | `list_issues` | Lists all open issues with their issue URL and branch URL. |
 | `get_issue` | Fetches full details of an issue — title, body, labels, assignees, branch, and status. |
 | `comment_issue` | Posts a comment to an issue. Useful for logging work done on a branch. |
-| `link_issues` | Links two issues with a relationship (blocked by, blocking, or parent). Relationship is stored in the issue body under a `## Relationships` section. |
+| `link_issues` | Links two issues with a relationship — `blocked_by`, `blocking`, or `parent`. Stored in the issue body under a `## Relationships` section. |
 | `close_issue` | Closes a GitHub issue by number. Posts a comment noting the branch remains open. |
 | `delete_issue` | Closes an issue **and** deletes its matching branch. Destructive — requires `confirmed: true`. |
 | `delete_branch` | Deletes a branch **and** closes its matching issue. Destructive — requires `confirmed: true`. |
 
 Destructive tools (`delete_issue`, `delete_branch`) follow a two-step confirmation pattern: call once to see a warning, then re-call with `confirmed: true` to proceed. A comment is posted to the issue before any action is taken.
+
+## Automatic doc updates
+
+When `OKFFS_UPDATE_DOCS=true` in your `.env`, okffs will automatically update local project docs when workflow events fire (closing issues, deleting branches, posting comments). Changes are written to local files — committing is your responsibility.
+
+Files updated when relevant: `CHANGELOG.md` (always, created if missing), `README.md`, `SECURITY.md`, `CONTRIBUTING.md`. CHANGELOG entries follow the [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) format.
 
 ## Conventions
 
@@ -177,6 +162,21 @@ Destructive tools (`delete_issue`, `delete_branch`) follow a two-step confirmati
 - GitHub is always the source of truth for issue state — never local.
 - Keep the tool surface minimal: do one thing well per tool.
 
+## Publishing to npm
+
+Requires an npm account with maintainer access to the `okffs` package.
+
+1. Bump the version in `package.json` following [semver](https://semver.org/)
+2. Commit and merge to `main`
+3. Tag and push:
+
+   ```bash
+   git tag v0.1.3
+   git push origin v0.1.3
+   ```
+
+The GitHub Actions workflow publishes to npm automatically on semver tags (`v*.*.*`). The `NPM_TOKEN` secret must be set in the repository settings.
+
 ## Codebase search
 
 This project uses [semble](https://github.com/MinishLab/semble) for semantic code search via MCP. The sub-agent config lives at `.claude/agents/semble-search.md` and is picked up automatically by Claude Code.
@@ -186,4 +186,3 @@ To search manually (requires `uv`):
 ```bash
 uvx --from "semble[mcp]" semble search "your query" .
 ```
-
