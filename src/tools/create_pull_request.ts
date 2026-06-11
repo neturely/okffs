@@ -14,7 +14,7 @@ import { updateProjectDocs } from "../docs.js";
 export const name = "create_pull_request";
 
 export const description =
-  "Create a pull request for the current issue branch. Reads the issue, its comments, and commits to generate a PR title and body. Always includes Closes #N. If OKFFS_UPDATE_DOCS is true, updates CHANGELOG before pushing. Posts a summary comment to the issue.";
+  "Create a pull request for the current issue branch. Reads the issue, its comments, and commits to generate a PR title and body. Always includes Closes #N. If OKFFS_UPDATE_DOCS is true, updates CHANGELOG before creating the PR. Posts a summary comment to the issue.";
 
 export const inputSchema = z.object({
   issue_number: z.number().int().positive().describe("The issue number to create a PR for"),
