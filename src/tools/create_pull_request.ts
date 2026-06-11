@@ -26,6 +26,10 @@ export async function handler(input: z.infer<typeof inputSchema>) {
   const branchName = extractBranchFromBody(issue.body);
 
   if (!branchName) {
+    await addIssueComment(
+      input.issue_number,
+      `PR not created — issue #${input.issue_number} has no associated branch. Add a **Branch:** line to the issue body first.`
+    );
     return {
       content: [{ type: "text" as const, text: `Issue #${input.issue_number} has no associated branch.` }],
     };
