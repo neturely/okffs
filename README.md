@@ -2,7 +2,7 @@
 
 > **Work in progress.**
 
-**okffs** is a TypeScript/Node.js [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server that connects Claude Code (VS Code) to GitHub, enabling a full **issue → branch → merge → close** workflow. Discuss tasks in Claude.ai, then push them to GitHub as issues and branches in one shot via Claude Code.
+**okffs** is a TypeScript/Node.js [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server that connects Claude Code to GitHub, enabling a full **issue → branch → merge → close** workflow. Discuss tasks in Claude.ai, then push them to GitHub as issues and branches in one shot via Claude Code.
 
 ## Stack
 
@@ -104,6 +104,7 @@ No installation needed. Add the `.mcp.json` and `.env` to your project as shown 
    OKFFS_BASE_BRANCH=main                         # branch to create issues from; defaults to repo default
    OKFFS_UPDATE_DOCS=false                        # set to true to auto-update project docs on workflow events
    OKFFS_AUTO_PR=false                            # set to true to auto-create a PR when closing an issue
+   OKFFS_EXCLUDE_DOCS=CLAUDE.md,CONTRIBUTING.md   # comma-separated — valid options: CLAUDE.md, SECURITY.md, CONTRIBUTING.md, CHANGELOG.md
    ```
 
 4. Build and point your `.mcp.json` at the local build:
@@ -144,7 +145,17 @@ Destructive tools (`delete_issue`, `delete_branch`) follow a two-step confirmati
 
 When `OKFFS_UPDATE_DOCS=true` in your `.env`, okffs will automatically update local project docs when workflow events fire (closing issues, creating PRs, posting comments). Changes are written to local files — committing is your responsibility.
 
-Files updated when relevant: `CHANGELOG.md` (always, created if missing), `SECURITY.md`, `CONTRIBUTING.md`. CHANGELOG entries follow the [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) format. When `OKFFS_AUTO_PR=true`, CHANGELOG is updated before the PR is created so the change is included in the PR diff.
+Files updated when relevant:
+- `CHANGELOG.md` — always updated, created if missing. Entries follow [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) format. When `OKFFS_AUTO_PR=true`, updated before the PR is created so it's included in the diff.
+- `CLAUDE.md` — updated when convention, workflow, tool, config, or architecture keywords are detected.
+- `SECURITY.md` — updated when security, vulnerability, or CVE keywords are detected.
+- `CONTRIBUTING.md` — updated when convention, contributing, or workflow keywords are detected.
+
+Use `OKFFS_EXCLUDE_DOCS` to exclude specific files per repo:
+```env
+OKFFS_EXCLUDE_DOCS=CLAUDE.md,CONTRIBUTING.md
+```
+README.md is intentionally excluded from auto-updates — maintain it manually.
 
 ## Conventions
 

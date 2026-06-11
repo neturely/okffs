@@ -4,7 +4,7 @@ Guidance for Claude Code when working in this repository.
 
 ## Project
 
-**okffs** is a TypeScript/Node.js MCP server that connects Claude Code (VS Code) to GitHub, enabling a full **issue → branch → merge → close** workflow. The goal: discuss tasks in Claude.ai, then push them to GitHub as issues and branches in one shot via Claude Code.
+**okffs** is a TypeScript/Node.js MCP server that connects Claude Code to GitHub, enabling a full **issue → branch → merge → close** workflow. The goal: discuss tasks in Claude.ai, then push them to GitHub as issues and branches in one shot via Claude Code.
 
 ## Stack
 
@@ -51,7 +51,7 @@ Guidance for Claude Code when working in this repository.
 - `delete_branch` deletes a branch and closes its issue (issue number parsed from branch name prefix). Same two-step confirmation pattern. Posts a comment before acting.
 - Optional `.env` defaults: `OKFFS_DEFAULT_ASSIGNEES`, `OKFFS_DEFAULT_LABELS`, `OKFFS_PROMPT_METADATA`, `OKFFS_BASE_BRANCH`, `OKFFS_UPDATE_DOCS`, `OKFFS_AUTO_PR`.
 - `OKFFS_BASE_BRANCH` — branch to create new issue branches from. Defaults to the repo's default branch.
-- `OKFFS_UPDATE_DOCS` — set to `true` to auto-update local project docs on workflow events. Default `false`.
+- `OKFFS_UPDATE_DOCS` — set to `true` to auto-update local project docs (CHANGELOG.md, CLAUDE.md, SECURITY.md, CONTRIBUTING.md) on workflow events. Default `false`. README.md is intentionally excluded.
 - `OKFFS_AUTO_PR` — set to `true` to automatically create a PR when closing an issue. Default `false`.
 
 ### Phase 2 — Bulk creation ✓ Complete
@@ -99,7 +99,7 @@ Guidance for Claude Code when working in this repository.
 - `.env` holds the GitHub PAT (`GITHUB_TOKEN`) with fine-grained permissions. It is git-ignored — see [.env.example](.env.example).
 - `.env` is loaded automatically at startup via `dotenv` from `process.cwd()`. No `--env-file` flag required in `.mcp.json`.
 - Required: `GITHUB_TOKEN`, `GITHUB_OWNER`, `GITHUB_REPO`.
-- Optional: `OKFFS_DEFAULT_ASSIGNEES` (comma-separated), `OKFFS_DEFAULT_LABELS` (comma-separated), `OKFFS_PROMPT_METADATA` (set to `false` to silence the tip), `OKFFS_BASE_BRANCH` (branch to create from; defaults to repo default), `OKFFS_UPDATE_DOCS` (set to `true` to enable auto doc updates), `OKFFS_AUTO_PR` (set to `true` to auto-create PR on issue close).
+- Optional: `OKFFS_DEFAULT_ASSIGNEES` (comma-separated), `OKFFS_DEFAULT_LABELS` (comma-separated), `OKFFS_PROMPT_METADATA` (set to `false` to silence the tip), `OKFFS_BASE_BRANCH` (branch to create from; defaults to repo default), `OKFFS_UPDATE_DOCS` (set to `true` to enable auto doc updates), `OKFFS_AUTO_PR` (set to `true` to auto-create PR on issue close), `OKFFS_EXCLUDE_DOCS` (comma-separated filenames to exclude from auto-updates — valid options: `CLAUDE.md`, `SECURITY.md`, `CONTRIBUTING.md`, `CHANGELOG.md`).
 
 ## Local dev vs published package
 
