@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { addIssueComment, owner, repo } from "../github.js";
+import { addIssueComment, getIssue, owner, repo } from "../github.js";
 import { config } from "../config.js";
 import { updateProjectDocs } from "../docs.js";
 
@@ -17,9 +17,11 @@ export async function handler(input: z.infer<typeof inputSchema>) {
   await addIssueComment(input.issue_number, input.comment);
 
   if (config.updateDocs) {
+    const issue = await getIssue(input.issue_number);
     await updateProjectDocs({
       trigger: "comment_issue",
       issueNumber: input.issue_number,
+      issueTitle: issue.title,
       summary: input.comment.slice(0, 300),
     });
   }

@@ -1,12 +1,13 @@
 import fs from "fs";
 import path from "path";
+import { config } from "./config.js";
 
-// Scoped to: README.md, CLAUDE.md, CHANGELOG.md, SECURITY.md, CONTRIBUTING.md
+// Scoped to: CLAUDE.md, CHANGELOG.md, SECURITY.md, CONTRIBUTING.md
 // CHANGELOG.md is created if missing. Others are only updated if they exist.
 // Files are written locally to process.cwd(). Committing is the user's responsibility.
 // Failures warn only — never throw.
 
-const SCOPED_FILES = ["README.md", "CLAUDE.md", "CHANGELOG.md", "SECURITY.md", "CONTRIBUTING.md"];
+const SCOPED_FILES = ["CLAUDE.md", "CHANGELOG.md", "SECURITY.md", "CONTRIBUTING.md"];
 
 export interface DocsContext {
   trigger: string;
@@ -36,7 +37,7 @@ function getChangeType(ctx: DocsContext): string {
 }
 
 function buildChangelogEntry(ctx: DocsContext): string {
-  const ref = ctx.issueNumber ? ` ([#${ctx.issueNumber}](../../issues/${ctx.issueNumber}))` : "";
+  const ref = ctx.issueNumber ? ` ([#${ctx.issueNumber}](https://github.com/${process.env.GITHUB_OWNER}/${process.env.GITHUB_REPO}/issues/${ctx.issueNumber}))` : "";
   const title = ctx.issueTitle ?? ctx.trigger;
 
   const cleanSummary = ctx.summary
@@ -45,13 +46,9 @@ function buildChangelogEntry(ctx: DocsContext): string {
     .replace(/^(Closed:|Fixed:|Added:|Changed:)\s*/i, "")
     .trim();
 
-  const truncated = cleanSummary.length > 100 ? cleanSummary.slice(0, 97) + "..." : cleanSummary;
+  const truncated = cleanSummary.length > 300 ? cleanSummary.slice(0, 297) + "..." : cleanSummary;
   const summaryPart = truncated && truncated !== title ? ` — ${truncated}` : "";
   return `- ${title}${ref}${summaryPart}`;
-}
-
-function shouldUpdateReadme(_ctx: DocsContext): boolean {
-  return false;
 }
 
 function shouldUpdateSecurity(ctx: DocsContext): boolean {
@@ -62,6 +59,11 @@ function shouldUpdateSecurity(ctx: DocsContext): boolean {
 function shouldUpdateContributing(ctx: DocsContext): boolean {
   const lower = (ctx.issueTitle ?? "") + ctx.summary;
   return /convention|contributing|workflow/i.test(lower);
+}
+
+function shouldUpdateClaude(ctx: DocsContext): boolean {
+  const lower = (ctx.issueTitle ?? "") + ctx.summary;
+  return /convention|workflow|tool|config|setup|architecture/i.test(lower);
 }
 
 function appendToSection(content: string, heading: string, entry: string): string {
@@ -82,56 +84,61 @@ function readFile(filePath: string): string | null {
 function determineUpdates(ctx: DocsContext, base: string): FileUpdate[] {
   const updates: FileUpdate[] = [];
 
+  const isExcluded = (filename: string): boolean =>
+    config.excludeDocs.some((f) => f.toLowerCase() === filename.toLowerCase());
+
   // CHANGELOG.md — always append an entry under ## [Unreleased] or at the end
-  const changelogPath = path.join(base, "CHANGELOG.md");
-  const changelog = readFile(changelogPath);
-  const type = getChangeType(ctx);
-  const entry = buildChangelogEntry(ctx);
-  if (changelog !== null) {
-    const unreleasedMarker = "## [Unreleased]";
-    const typeHeading = `### ${type}`;
-    let newContent: string;
-    if (changelog.includes(unreleasedMarker)) {
-      if (changelog.includes(typeHeading)) {
-        newContent = changelog.replace(typeHeading, typeHeading + "\n" + entry + "\n");
-      } else {
-        // Find the end of the [Unreleased] block and append the new type heading there
-        // instead of inserting right after the marker, to avoid gaps between type sections
-        const unreleasedEnd = changelog.indexOf("\n## ", changelog.indexOf(unreleasedMarker) + 1);
-        if (unreleasedEnd !== -1) {
-          newContent = changelog.slice(0, unreleasedEnd) + "\n" + typeHeading + "\n" + entry + "\n" + changelog.slice(unreleasedEnd);
+  if (!isExcluded("CHANGELOG.md")) {
+    const changelogPath = path.join(base, "CHANGELOG.md");
+    const changelog = readFile(changelogPath);
+    const type = getChangeType(ctx);
+    const entry = buildChangelogEntry(ctx);
+    if (changelog !== null) {
+      const unreleasedMarker = "## [Unreleased]";
+      const typeHeading = `### ${type}`;
+      let newContent: string;
+      if (changelog.includes(unreleasedMarker)) {
+        if (changelog.includes(typeHeading)) {
+          newContent = changelog.replace(typeHeading, typeHeading + "\n" + entry);
         } else {
-          newContent = changelog.trimEnd() + "\n" + typeHeading + "\n" + entry.trimEnd() + "\n";
+          // Find the end of the [Unreleased] block and append the new type heading there
+          // instead of inserting right after the marker, to avoid gaps between type sections
+          const unreleasedEnd = changelog.indexOf("\n## ", changelog.indexOf(unreleasedMarker) + 1);
+          if (unreleasedEnd !== -1) {
+            newContent = changelog.slice(0, unreleasedEnd) + "\n" + typeHeading + "\n" + entry + changelog.slice(unreleasedEnd);
+          } else {
+            newContent = changelog.trimEnd() + "\n" + typeHeading + "\n" + entry;
+          }
         }
+      } else {
+        newContent = changelog.trimEnd() + "\n\n" + typeHeading + "\n" + entry;
       }
+      updates.push({ path: changelogPath, content: newContent, created: false });
     } else {
-      newContent = changelog.trimEnd() + "\n\n" + typeHeading + "\n" + entry;
+      updates.push({
+        path: changelogPath,
+        content: `# Changelog\n\nAll notable changes to this project will be documented in this file.\nSee [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).\n\n## [Unreleased]\n### ${type}\n${entry}`,
+        created: true,
+      });
     }
-    updates.push({ path: changelogPath, content: newContent, created: false });
-  } else {
-    updates.push({
-      path: changelogPath,
-      content: `# Changelog\n\nAll notable changes to this project will be documented in this file.\nSee [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).\n\n## [Unreleased]\n### ${type}\n${entry}`,
-      created: true,
-    });
   }
 
-  // README.md — only for user-facing triggers, append to ## Recent Changes if present
-  if (shouldUpdateReadme(ctx)) {
-    const readmePath = path.join(base, "README.md");
-    const readme = readFile(readmePath);
-    if (readme !== null) {
-      const line = `- ${isoDate()}${ctx.issueNumber ? ` — closes #${ctx.issueNumber}` : ""}: ${ctx.summary}`;
+  // CLAUDE.md — only for convention/workflow/tool/config changes
+  if (shouldUpdateClaude(ctx) && !isExcluded("CLAUDE.md")) {
+    const claudePath = path.join(base, "CLAUDE.md");
+    const claude = readFile(claudePath);
+    if (claude !== null) {
+      const line = `\n- ${isoDate()}${ctx.issueNumber ? ` ([#${ctx.issueNumber}](https://github.com/${process.env.GITHUB_OWNER}/${process.env.GITHUB_REPO}/issues/${ctx.issueNumber}))` : ""}: ${ctx.summary.slice(0, 200)}`;
       updates.push({
-        path: readmePath,
-        content: appendToSection(readme, "## Recent Changes", "\n" + line),
+        path: claudePath,
+        content: appendToSection(claude, "## Recent Changes", line),
         created: false,
       });
     }
   }
 
   // SECURITY.md — only for security-related triggers
-  if (shouldUpdateSecurity(ctx)) {
+  if (shouldUpdateSecurity(ctx) && !isExcluded("SECURITY.md")) {
     const secPath = path.join(base, "SECURITY.md");
     const sec = readFile(secPath);
     if (sec !== null) {
@@ -141,7 +148,7 @@ function determineUpdates(ctx: DocsContext, base: string): FileUpdate[] {
   }
 
   // CONTRIBUTING.md — only when conventions changed
-  if (shouldUpdateContributing(ctx)) {
+  if (shouldUpdateContributing(ctx) && !isExcluded("CONTRIBUTING.md")) {
     const contribPath = path.join(base, "CONTRIBUTING.md");
     const contrib = readFile(contribPath);
     if (contrib !== null) {

@@ -5,8 +5,6 @@ See [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 ### Changed
-- Test milestone assignment ([#26](../../issues/26)) — Testing that milestone parameter works correctly
-### Fixed
-- Fix broken link in README ([#22](../../issues/22)) — The quick start link in the README points to the wrong anchor
-
-- Fix broken link in README ([#22](../../issues/22)) — The quick start link in the README points to the wrong anchor
+- Document branch naming convention in workflow ([#34](https://github.com/2b9sa2owa/okffs/issues/34)) — Add a section to the docs describing the branch naming convention used in the issue → branch → merge workflow.
+- Test issue 3 ([#32](https://github.com/2b9sa2owa/okffs/issues/32)) — Completed the initial implementation and all tests passing
+- Test issue 2 ([#31](https://github.com/2b9sa2owa/okffs/issues/31)) — This is a test issue.

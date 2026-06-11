@@ -39,7 +39,7 @@ export async function handler(input: z.infer<typeof inputSchema>) {
     }
   }
 
-  if (config.updateDocs) {
+  if (config.updateDocs && !config.autoPR) {
     await updateProjectDocs({
       trigger: "close_issue",
       issueNumber: input.issue_number,
