@@ -64,9 +64,11 @@ export async function handler(input: z.infer<typeof inputSchema>) {
     ? commits.map((c) => `- ${c.commit.message.split("\n")[0]}`).join("\n")
     : "- No commits found";
 
-  const recentComments = comments.slice(-3);
+  const recentComments = comments.slice(0, 3).reverse();
   const commentsSection = recentComments.length > 0
-    ? recentComments.map((c) => c.body).join("\n\n---\n\n")
+    ? recentComments
+        .map((c) => `\n\`\`\`\n${c.body}\n\`\`\`\n`)
+        .join("\n\n---\n\n")
     : null;
 
   const bodyParts = [
