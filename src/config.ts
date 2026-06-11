@@ -8,4 +8,8 @@ export const config = {
     : [],
   baseBranch: process.env.OKFFS_BASE_BRANCH || null,
   updateDocs: process.env.OKFFS_UPDATE_DOCS === "true",
+  autoPR: process.env.OKFFS_AUTO_PR === "true",
+  excludeDocs: process.env.OKFFS_EXCLUDE_DOCS
+    ? process.env.OKFFS_EXCLUDE_DOCS.split(",").map((s) => s.trim())
+    : [],
 };

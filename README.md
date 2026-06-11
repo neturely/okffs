@@ -2,7 +2,7 @@
 
 > **Work in progress.**
 
-**okffs** is a TypeScript/Node.js [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server that connects Claude Code (VS Code) to GitHub, enabling a full **issue → branch → merge → close** workflow. Discuss tasks in Claude.ai, then push them to GitHub as issues and branches in one shot via Claude Code.
+**okffs** is a TypeScript/Node.js [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server that connects Claude Code to GitHub, enabling a full **issue → branch → merge → close** workflow. Discuss tasks in Claude.ai, then push them to GitHub as issues and branches in one shot via Claude Code.
 
 ## Stack
 
@@ -18,8 +18,8 @@ This project is being built in phases. See [CLAUDE.md](CLAUDE.md) for the full r
 |------|-------|--------|
 | 1 | Core MCP server — `create_issue`, `list_issues`, `close_issue`, `delete_issue`, `delete_branch`, `get_issue`, `comment_issue`, `link_issues` | **Complete** |
 | 2 | Bulk creation — `create_issues_from_list` | **Complete** |
-| 3 | Claude.ai bridge — markdown paste format + `/push-to-github` | Planned |
-| 4 | Auto-close on merge — `create_pull_request`, embed `Closes #N` in PR body | Planned |
+| 3 | Claude.ai bridge | Skipped — not required |
+| 4 | Auto-close on merge — `create_pull_request` | **Complete** |
 | 5 | GitHub Projects v2 (optional) | Planned |
 | 6 | Project site — `okffs.g2mk.dev` | Planned |
 
@@ -55,6 +55,7 @@ Once configured, Claude Code will pick up the tools automatically. You can ask C
 - *"Create issues from this task list: ..."*
 - *"Post a comment to issue #12 saying what was done"*
 - *"Mark issue #5 as blocked by issue #3"*
+- *"Done with issue #42, close it and open a PR"*
 
 Claude infers appropriate labels (`bug`, `enhancement`, etc.) from the issue title and description, and merges them with your `OKFFS_DEFAULT_LABELS`.
 
@@ -102,6 +103,8 @@ No installation needed. Add the `.mcp.json` and `.env` to your project as shown 
    OKFFS_PROMPT_METADATA=true                     # set to false to hide the tip
    OKFFS_BASE_BRANCH=main                         # branch to create issues from; defaults to repo default
    OKFFS_UPDATE_DOCS=false                        # set to true to auto-update project docs on workflow events
+   OKFFS_AUTO_PR=false                            # set to true to auto-create a PR when closing an issue
+   OKFFS_EXCLUDE_DOCS=CLAUDE.md,CONTRIBUTING.md   # comma-separated — valid options: CLAUDE.md, SECURITY.md, CONTRIBUTING.md, CHANGELOG.md
    ```
 
 4. Build and point your `.mcp.json` at the local build:
@@ -131,7 +134,8 @@ No installation needed. Add the `.mcp.json` and `.env` to your project as shown 
 | `get_issue` | Fetches full details of an issue — title, body, labels, assignees, branch, and status. |
 | `comment_issue` | Posts a comment to an issue. Useful for logging work done on a branch. |
 | `link_issues` | Links two issues with a relationship — `blocked_by`, `blocking`, or `parent`. Stored in the issue body under a `## Relationships` section. |
-| `close_issue` | Closes a GitHub issue by number. Posts a comment noting the branch remains open. |
+| `close_issue` | Closes a GitHub issue by number. If `OKFFS_AUTO_PR=true`, automatically creates a PR instead of posting a branch comment. |
+| `create_pull_request` | Creates a PR for an issue branch. Generates title and body from the issue, commits, and comments. Always includes `Closes #N`. Posts a summary comment to the issue. |
 | `delete_issue` | Closes an issue **and** deletes its matching branch. Destructive — requires `confirmed: true`. |
 | `delete_branch` | Deletes a branch **and** closes its matching issue. Destructive — requires `confirmed: true`. |
 
@@ -139,9 +143,19 @@ Destructive tools (`delete_issue`, `delete_branch`) follow a two-step confirmati
 
 ## Automatic doc updates
 
-When `OKFFS_UPDATE_DOCS=true` in your `.env`, okffs will automatically update local project docs when workflow events fire (closing issues, deleting branches, posting comments). Changes are written to local files — committing is your responsibility.
+When `OKFFS_UPDATE_DOCS=true` in your `.env`, okffs will automatically update local project docs when workflow events fire (closing issues, creating PRs, posting comments). Changes are written to local files — committing is your responsibility.
 
-Files updated when relevant: `CHANGELOG.md` (always, created if missing), `README.md`, `SECURITY.md`, `CONTRIBUTING.md`. CHANGELOG entries follow the [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) format.
+Files updated when relevant:
+- `CHANGELOG.md` — always updated, created if missing. Entries follow [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) format. When `OKFFS_AUTO_PR=true`, updated before the PR is created so it's included in the diff.
+- `CLAUDE.md` — updated when convention, workflow, tool, config, or architecture keywords are detected.
+- `SECURITY.md` — updated when security, vulnerability, or CVE keywords are detected.
+- `CONTRIBUTING.md` — updated when convention, contributing, or workflow keywords are detected.
+
+Use `OKFFS_EXCLUDE_DOCS` to exclude specific files per repo:
+```env
+OKFFS_EXCLUDE_DOCS=CLAUDE.md,CONTRIBUTING.md
+```
+README.md is intentionally excluded from auto-updates — maintain it manually.
 
 ## Conventions
 
@@ -171,8 +185,8 @@ Requires an npm account with maintainer access to the `okffs` package.
 3. Tag and push:
 
    ```bash
-   git tag v0.1.3
-   git push origin v0.1.3
+   git tag v0.1.4
+   git push origin v0.1.4
    ```
 
 The GitHub Actions workflow publishes to npm automatically on semver tags (`v*.*.*`). The `NPM_TOKEN` secret must be set in the repository settings.
