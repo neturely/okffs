@@ -1,6 +1,6 @@
 {
   "name": "okffs",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "MCP server that connects Claude Code to GitHub — create and manage issues and branches without leaving your editor.",
   "type": "module",
   "main": "dist/index.js",
