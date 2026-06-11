@@ -58,7 +58,7 @@ Follow the existing patterns:
 
 ## Branch and PR conventions
 
-- Branch from `develop`: `{issue-number}-{kebab-title-slug}`
+- Branch from `OKFFS_BASE_BRANCH` (or the repo default branch): `{issue-number}-{kebab-title-slug}`
 - PR title: `Close #N - Issue title`
 - PR body must include `Closes #N`
 - One logical change per PR
