@@ -32,9 +32,10 @@ export async function handler(input: z.infer<typeof inputSchema>) {
       await createPRHandler({ issue_number: input.issue_number });
     } catch (err) {
       console.warn("[okffs] auto PR creation failed:", err);
+      const branchHint = branchName ? ` from branch \`${branchName}\`` : "";
       await addIssueComment(
         input.issue_number,
-        `Issue closed. Auto PR creation failed — create the PR manually from branch \`${branchName}\`.`
+        `Issue closed. Auto PR creation failed — create the PR manually${branchHint}.`
       );
     }
   }
