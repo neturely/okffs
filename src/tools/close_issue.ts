@@ -17,13 +17,26 @@ export async function handler(input: z.infer<typeof inputSchema>) {
 
   await closeIssue(input.issue_number);
 
-  if (branchName) {
+  if (branchName && !config.autoPR) {
     const comment = [
       `Issue closed. Branch \`${branchName}\` remains open — https://github.com/${owner}/${repo}/tree/${branchName}`,
       ``,
       `No action has been taken on the branch.`,
     ].join("\n");
     await addIssueComment(input.issue_number, comment);
+  }
+
+  if (config.autoPR) {
+    try {
+      const { handler: createPRHandler } = await import("./create_pull_request.js");
+      await createPRHandler({ issue_number: input.issue_number });
+    } catch (err) {
+      console.warn("[okffs] auto PR creation failed:", err);
+      await addIssueComment(
+        input.issue_number,
+        `Issue closed. Auto PR creation failed — create the PR manually from branch \`${branchName}\`.`
+      );
+    }
   }
 
   if (config.updateDocs) {

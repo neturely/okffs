@@ -46,12 +46,13 @@ Guidance for Claude Code when working in this repository.
 - `get_issue` fetches full issue details — title, body, status, branch, assignees, labels.
 - `comment_issue` posts a comment to an issue. Use after committing to log what was done.
 - `link_issues` links two issues with a relationship — `blocked_by`, `blocking`, or `parent`. Stored in the issue body under a `## Relationships` section.
-- `close_issue` closes the issue and posts a comment noting the branch remains open (branch name extracted from the embedded `**Branch:**` line).
+- `close_issue` closes the issue. If `OKFFS_AUTO_PR=true`, automatically creates a PR instead of posting a branch-remains-open comment.
 - `delete_issue` closes an issue and deletes its branch. Two-step: call once for a warning, re-call with `confirmed: true` to proceed. Posts a comment before acting.
 - `delete_branch` deletes a branch and closes its issue (issue number parsed from branch name prefix). Same two-step confirmation pattern. Posts a comment before acting.
-- Optional `.env` defaults: `OKFFS_DEFAULT_ASSIGNEES`, `OKFFS_DEFAULT_LABELS`, `OKFFS_PROMPT_METADATA`, `OKFFS_BASE_BRANCH`, `OKFFS_UPDATE_DOCS`.
+- Optional `.env` defaults: `OKFFS_DEFAULT_ASSIGNEES`, `OKFFS_DEFAULT_LABELS`, `OKFFS_PROMPT_METADATA`, `OKFFS_BASE_BRANCH`, `OKFFS_UPDATE_DOCS`, `OKFFS_AUTO_PR`.
 - `OKFFS_BASE_BRANCH` — branch to create new issue branches from. Defaults to the repo's default branch.
-- `OKFFS_UPDATE_DOCS` — set to `true` to auto-update local project docs (CHANGELOG.md, README.md, SECURITY.md, CONTRIBUTING.md) on workflow events. Default `false`. Changes are written locally — committing is the user's responsibility.
+- `OKFFS_UPDATE_DOCS` — set to `true` to auto-update local project docs on workflow events. Default `false`.
+- `OKFFS_AUTO_PR` — set to `true` to automatically create a PR when closing an issue. Default `false`.
 
 ### Phase 2 — Bulk creation ✓ Complete
 
@@ -61,16 +62,18 @@ Guidance for Claude Code when working in this repository.
 - Per-task `labels`, `assignees`, and `milestone` supported; labels merged with `OKFFS_DEFAULT_LABELS`.
 - Auto-generates branch names from issue number + title slug.
 
-### Phase 3 — Claude.ai bridge
+### Phase 3 — Claude.ai bridge (not required — skipped)
 
-- Define a standard markdown paste format to carry task lists from Claude.ai into Claude Code.
-- Slash command (e.g. `/push-to-github`) that reads the task list and triggers `create_issues_from_list`.
+- Natural language task creation already works well enough via Claude Code.
+- No slash command or paste format needed.
 
-### Phase 4 — Auto-close on merge
+### Phase 4 — Auto-close on merge ✓ Complete
 
-- `create_pull_request` tool — commits staged changes, pushes branch, opens PR against `OKFFS_BASE_BRANCH`, includes `Closes #N` in body, triggers doc update with full session summary.
-- Post a comment on the issue when the branch is merged and deleted — noting PR title, merge date, branch name.
+- `create_pull_request` tool — reads the issue, commits on the branch, and issue comments to generate a PR title and body. Always includes `Closes #N`. Posts a summary comment back to the issue.
+- If `OKFFS_UPDATE_DOCS=true`, updates CHANGELOG before the PR is created so the change is included in the PR diff.
+- If `OKFFS_AUTO_PR=true`, `close_issue` automatically triggers `create_pull_request`.
 - GitHub natively closes the issue on merge via `Closes #N` — no webhook infrastructure needed.
+- Edge case: if the branch has no commits ahead of the base branch, a friendly comment is posted instead of erroring.
 
 ### Phase 5 — GitHub Projects v2 (optional, later)
 
@@ -96,7 +99,7 @@ Guidance for Claude Code when working in this repository.
 - `.env` holds the GitHub PAT (`GITHUB_TOKEN`) with fine-grained permissions. It is git-ignored — see [.env.example](.env.example).
 - `.env` is loaded automatically at startup via `dotenv` from `process.cwd()`. No `--env-file` flag required in `.mcp.json`.
 - Required: `GITHUB_TOKEN`, `GITHUB_OWNER`, `GITHUB_REPO`.
-- Optional defaults: `OKFFS_DEFAULT_ASSIGNEES` (comma-separated), `OKFFS_DEFAULT_LABELS` (comma-separated), `OKFFS_PROMPT_METADATA` (set to `false` to silence the tip), `OKFFS_BASE_BRANCH` (branch to create from; defaults to repo default), `OKFFS_UPDATE_DOCS` (set to `true` to enable auto doc updates).
+- Optional: `OKFFS_DEFAULT_ASSIGNEES` (comma-separated), `OKFFS_DEFAULT_LABELS` (comma-separated), `OKFFS_PROMPT_METADATA` (set to `false` to silence the tip), `OKFFS_BASE_BRANCH` (branch to create from; defaults to repo default), `OKFFS_UPDATE_DOCS` (set to `true` to enable auto doc updates), `OKFFS_AUTO_PR` (set to `true` to auto-create PR on issue close).
 
 ## Local dev vs published package
 

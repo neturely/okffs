@@ -109,6 +109,28 @@ export async function deleteBranch(branchName: string): Promise<void> {
   });
 }
 
+export async function getBranchCommits(branchName: string, baseBranch: string): Promise<Array<{ sha: string; commit: { message: string } }>> {
+  return request(`/repos/${owner}/${repo}/compare/${baseBranch}...${branchName}`).then(
+    (data: any) => data.commits ?? []
+  );
+}
+
+export async function getIssueComments(issueNumber: number): Promise<Array<{ body: string }>> {
+  return request(`/repos/${owner}/${repo}/issues/${issueNumber}/comments`);
+}
+
+export async function createPullRequest(
+  title: string,
+  body: string,
+  head: string,
+  base: string
+): Promise<{ number: number; html_url: string }> {
+  return request(`/repos/${owner}/${repo}/pulls`, {
+    method: "POST",
+    body: JSON.stringify({ title, head, base, body }),
+  });
+}
+
 export function extractBranchFromBody(body: string | null): string | null {
   if (!body) return null;
   const match = body.match(/\*\*Branch:\*\*\s+`([^`]+)`/);
