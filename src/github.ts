@@ -116,7 +116,8 @@ export async function getBranchCommits(branchName: string, baseBranch: string): 
 }
 
 export async function getIssueComments(issueNumber: number): Promise<Array<{ body: string }>> {
-  return request(`/repos/${owner}/${repo}/issues/${issueNumber}/comments`);
+  // Fetch newest-first so callers can reliably take the most recent N comments.
+  return request(`/repos/${owner}/${repo}/issues/${issueNumber}/comments?per_page=100&sort=created&direction=desc`);
 }
 
 export async function createPullRequest(
