@@ -7,8 +7,6 @@ import { config } from "./config.js";
 // Files are written locally to process.cwd(). Committing is the user's responsibility.
 // Failures warn only — never throw.
 
-const SCOPED_FILES = ["CLAUDE.md", "CHANGELOG.md", "SECURITY.md", "CONTRIBUTING.md"];
-
 export interface DocsContext {
   trigger: string;
   issueNumber?: number;
