@@ -1,0 +1,77 @@
+---
+applyTo: "**"
+---
+
+# okffs — Copilot Instructions
+
+okffs is a TypeScript/Node.js Model Context Protocol (MCP) server that connects Claude Code to GitHub. It enables a full issue → branch → PR → merge → close workflow without leaving the IDE.
+
+## Architecture
+
+- `src/index.ts` — MCP server entry point, registers all tools via StdioServerTransport
+- `src/github.ts` — GitHub REST API client using PAT auth
+- `src/config.ts` — reads all OKFFS_* env vars
+- `src/docs.ts` — auto-updates local project docs on workflow events
+- `src/tools/` — one file per tool, each exports `name`, `description`, `inputSchema`, and `handler`
+
+## Tool patterns
+
+Every tool follows the same structure:
+```ts
+export const name = "tool_name";
+export const description = "...";
+export const inputSchema = z.object({ ... });
+export async function handler(input: z.infer<typeof inputSchema>) { ... }
+```
+
+Registered in `src/index.ts` via `server.tool(name, description, inputSchema.shape, handler)`.
+
+## Critical conventions
+
+**Destructive tools** (`delete_issue`, `delete_branch`) must:
+- Accept a `confirmed: boolean` optional parameter
+- Return a warning message without acting if `confirmed !== true`
+- Post a comment to the issue via `addIssueComment()` before acting
+- Then perform the destructive action
+
+**Branch naming:** `{issue-number}-{kebab-title-slug}` — issue number is always the prefix, used to link branches back to issues.
+
+**Branch extraction:** `extractBranchFromBody(issue.body)` parses the `**Branch:** \`name\`` line embedded by `create_issue`. All tools that need the branch name use this — never assume a branch name.
+
+**Issue number extraction from branch:** parse the numeric prefix e.g. `42-add-hero-section` → issue `42`.
+
+**PR convention:** title `Close #N - Issue title`, body always includes `Closes #N`.
+
+## Config flags
+
+All read from `src/config.ts`:
+- `config.autoPR` — if true, `close_issue` triggers `create_pull_request` automatically
+- `config.updateDocs` — if true, tools call `updateProjectDocs()` on workflow events
+- `config.excludeDocs` — array of filenames to skip during doc updates
+- `config.baseBranch` — override for base branch, falls back to repo default
+- `config.defaultAssignees` / `config.defaultLabels` — merged with per-call values
+
+## Doc auto-updates
+
+`updateProjectDocs(ctx)` in `src/docs.ts` writes to local files via `fs.writeFileSync`. It never commits — that's the user's responsibility.
+
+Files updated based on keyword matching:
+- `CHANGELOG.md` — always, on every trigger. Created if missing. Keep a Changelog format.
+- `CLAUDE.md` — convention/workflow/tool/config/architecture keywords
+- `SECURITY.md` — security/vulnerability/CVE keywords
+- `CONTRIBUTING.md` — convention/contributing/workflow keywords
+- `README.md` — intentionally excluded, maintained manually
+
+When `config.autoPR` is true, `close_issue` must NOT call `updateProjectDocs` — `create_pull_request` handles it to avoid duplicate entries.
+
+## GitHub API
+
+All calls go through `request<T>()` in `github.ts` which handles auth headers and 204 responses. Use this helper for all new API calls — never call `fetch` directly in tools.
+
+Pagination: always add `per_page=100` to list endpoints. For comments, use `sort=created&direction=desc` to get newest first.
+
+## Error handling
+
+- Non-destructive failures should warn and continue, never throw to the user
+- Destructive tool failures should surface clearly
+- `updateProjectDocs` failures always warn only — never block the main tool action

@@ -10,6 +10,7 @@ import {
 } from "../github.js";
 import { config } from "../config.js";
 import { updateProjectDocs } from "../docs.js";
+import { git, currentBranch } from "../git.js";
 
 export const name = "create_pull_request";
 
@@ -87,14 +88,74 @@ export async function handler(input: z.infer<typeof inputSchema>) {
 
   const body = bodyParts.join("\n");
 
+  let docsResult: string | null = null;
   if (config.updateDocs) {
-    await updateProjectDocs({
+    docsResult = await updateProjectDocs({
       trigger: "create_pull_request",
       issueNumber: input.issue_number,
       issueTitle: issue.title,
       summary: input.summary ?? cleanedDescription,
       branchName,
     });
+  }
+
+  // Commit any doc updates and push the branch before opening the PR. Operate on
+  // branchName explicitly so we never commit/push the wrong branch, and restore
+  // the caller's original branch afterward.
+  const previousBranch = currentBranch();
+  try {
+    git(["checkout", branchName]);
+  } catch (err) {
+    console.warn(`[okffs] Failed to checkout branch ${branchName}.`, err instanceof Error ? err.message : err);
+    await addIssueComment(
+      input.issue_number,
+      `PR not created — could not switch to branch \`${branchName}\` locally. Check out the branch, then run \`create_pull_request\` again.`
+    );
+    return {
+      content: [{ type: "text" as const, text: `PR not created — could not switch to branch \`${branchName}\` locally.` }],
+    };
+  }
+
+  try {
+    // If docs were updated, commit the CHANGELOG so it's in the PR diff. A
+    // failure here must never block PR creation.
+    if (docsResult) {
+      try {
+        git(["add", "CHANGELOG.md"]);
+        git(["commit", "-m", `docs: update CHANGELOG for #${input.issue_number}`]);
+      } catch (err) {
+        console.warn(
+          `[okffs] Failed to commit CHANGELOG for #${input.issue_number} — continuing without it.`,
+          err instanceof Error ? err.message : err
+        );
+      }
+    }
+
+    // Push so GitHub sees the commits before PR creation. If commits exist only
+    // locally, the API would report no commits ahead of base.
+    try {
+      git(["push", "origin", branchName]);
+    } catch (err) {
+      console.warn(
+        `[okffs] Failed to push branch ${branchName} to remote.`,
+        err instanceof Error ? err.message : err
+      );
+      await addIssueComment(
+        input.issue_number,
+        `PR not created — could not push branch \`${branchName}\` to remote. Please push manually (\`git push origin ${branchName}\`) then run \`create_pull_request\` to continue.`
+      );
+      return {
+        content: [{ type: "text" as const, text: `PR not created — could not push branch \`${branchName}\` to remote. Push manually (\`git push origin ${branchName}\`) then run create_pull_request to continue.` }],
+      };
+    }
+  } finally {
+    if (previousBranch && previousBranch !== branchName) {
+      try {
+        git(["checkout", previousBranch]);
+      } catch (err) {
+        console.warn(`[okffs] Failed to restore branch ${previousBranch}.`, err instanceof Error ? err.message : err);
+      }
+    }
   }
 
   const pr = await createPullRequest(title, body, branchName, baseBranch);
