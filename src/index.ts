@@ -19,8 +19,9 @@ import * as commentIssue from "./tools/comment_issue.js";
 import * as createIssuesFromList from "./tools/create_issues_from_list.js";
 import * as linkIssues from "./tools/link_issues.js";
 import * as createPullRequest from "./tools/create_pull_request.js";
+import * as commitAndUpdate from "./tools/commit_and_update.js";
 
-const tools = [createIssue, listIssues, closeIssue, deleteIssue, deleteBranch, getIssue, commentIssue, createIssuesFromList, linkIssues, createPullRequest];
+const tools = [createIssue, listIssues, closeIssue, deleteIssue, deleteBranch, getIssue, commentIssue, createIssuesFromList, linkIssues, createPullRequest, commitAndUpdate];
 
 const server = new Server(
   { name: "okffs", version: "0.0.1" },

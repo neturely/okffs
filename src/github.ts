@@ -132,6 +132,18 @@ export async function createPullRequest(
   });
 }
 
+export async function createDraftPullRequest(
+  title: string,
+  body: string,
+  head: string,
+  base: string
+): Promise<{ number: number; html_url: string }> {
+  return request(`/repos/${owner}/${repo}/pulls`, {
+    method: "POST",
+    body: JSON.stringify({ title, head, base, body, draft: true }),
+  });
+}
+
 export function extractBranchFromBody(body: string | null): string | null {
   if (!body) return null;
   const match = body.match(/\*\*Branch:\*\*\s+`([^`]+)`/);
