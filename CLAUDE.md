@@ -47,7 +47,7 @@ Guidance for Claude Code when working in this repository.
 - `comment_issue` posts a comment to an issue. Use after committing to log what was done.
 - `link_issues` links two issues with a relationship — `blocked_by`, `blocking`, or `parent`. Stored in the issue body under a `## Relationships` section.
 - `close_issue` closes the issue and returns a tip suggesting the user runs `/clear` in Claude Code to reset context before the next issue. (Under `OKFFS_AUTO_PR=true` the draft PR already exists from `create_issue`, so no PR is created here.)
-- `commit_and_update` stages all changes, generates a conventional commit message from the diff (or the optional `hint`), commits, pushes to the current branch, and posts a rich progress comment to the linked issue.
+- `commit_and_update` stages all changes, builds a commit message from the optional `hint` (or the changed file list), commits, pushes to the issue branch, and posts a rich progress comment to the linked issue.
 - `delete_issue` closes an issue and deletes its branch. Two-step: call once for a warning, re-call with `confirmed: true` to proceed. Posts a comment before acting.
 - `delete_branch` deletes a branch and closes its issue (issue number parsed from branch name prefix). Same two-step confirmation pattern. Posts a comment before acting.
 - Optional `.env` defaults: `OKFFS_DEFAULT_ASSIGNEES`, `OKFFS_DEFAULT_LABELS`, `OKFFS_PROMPT_METADATA`, `OKFFS_BASE_BRANCH`, `OKFFS_UPDATE_DOCS`, `OKFFS_AUTO_PR`.

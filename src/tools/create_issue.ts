@@ -1,7 +1,7 @@
-import { execSync } from "node:child_process";
 import { z } from "zod";
 import { createIssue, updateIssueBody, getDefaultBranch, getRef, createBranch, slugify, createDraftPullRequest } from "../github.js";
 import { config } from "../config.js";
+import { git, currentBranch } from "../git.js";
 
 export const name = "create_issue";
 
@@ -33,30 +33,35 @@ export async function handler(input: z.infer<typeof inputSchema>) {
   const updatedBody = `${input.description}\n\n**Branch:** \`${branchName}\``;
   await updateIssueBody(issue.number, updatedBody);
 
-  // Push an empty init commit so the branch diverges from base,
-  // allowing GitHub to accept a draft PR immediately.
-  try {
-    const previousBranch = execSync("git rev-parse --abbrev-ref HEAD", { encoding: "utf8" }).trim();
-    execSync(`git fetch origin`, { stdio: "ignore" });
-    execSync(`git checkout ${branchName}`, { stdio: "ignore" });
-    execSync(`git commit --allow-empty -m "chore: init branch for #${issue.number}"`, { stdio: "ignore" });
-    execSync(`git push origin ${branchName}`, { stdio: "ignore" });
-    if (previousBranch && previousBranch !== branchName) {
-      execSync(`git checkout ${previousBranch}`, { stdio: "ignore" });
-    }
-  } catch (err) {
-    console.warn("[okffs] Failed to push init commit:", err instanceof Error ? err.message : err);
-  }
-
   let draftPRUrl: string | null = null;
   if (config.autoPR) {
+    // Push an empty init commit so the branch diverges from base, allowing
+    // GitHub to accept a draft PR immediately. Only needed for the auto-PR flow.
+    const previousBranch = currentBranch();
     try {
-      const baseBranch = defaultBranch;
+      git(["fetch", "origin"]);
+      git(["checkout", branchName]);
+      git(["commit", "--allow-empty", "-m", `chore: init branch for #${issue.number}`]);
+      git(["push", "origin", branchName]);
+    } catch (err) {
+      console.warn("[okffs] Failed to push init commit:", err instanceof Error ? err.message : err);
+    } finally {
+      // Always restore the caller's original branch, even if a step above failed.
+      if (previousBranch && previousBranch !== branchName) {
+        try {
+          git(["checkout", previousBranch]);
+        } catch (err) {
+          console.warn("[okffs] Failed to restore branch:", err instanceof Error ? err.message : err);
+        }
+      }
+    }
+
+    try {
       const pr = await createDraftPullRequest(
         `WIP: #${issue.number} - ${input.title}`,
         `Closes #${issue.number}`,
         branchName,
-        baseBranch
+        defaultBranch
       );
       draftPRUrl = pr.html_url;
     } catch (err) {

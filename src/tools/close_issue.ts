@@ -26,7 +26,9 @@ export async function handler(input: z.infer<typeof inputSchema>) {
     await addIssueComment(input.issue_number, comment);
   }
 
-  if (config.updateDocs) {
+  // In the auto-PR flow, create_pull_request already updates and commits the
+  // CHANGELOG for this issue — skip here to avoid duplicate entries.
+  if (config.updateDocs && !config.autoPR) {
     await updateProjectDocs({
       trigger: "close_issue",
       issueNumber: input.issue_number,

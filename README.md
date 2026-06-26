@@ -136,7 +136,7 @@ No installation needed. Add the `.mcp.json` and `.env` to your project as shown 
 | `link_issues` | Links two issues with a relationship — `blocked_by`, `blocking`, or `parent`. Stored in the issue body under a `## Relationships` section. |
 | `close_issue` | Closes a GitHub issue by number. Returns a tip to run `/clear` in Claude Code before starting the next issue. |
 | `create_pull_request` | Creates a PR for an issue branch. Generates title and body from the issue, commits, and comments. If `OKFFS_UPDATE_DOCS=true`, commits the updated CHANGELOG onto the branch; pushes the branch before opening the PR. Always includes `Closes #N`. Posts a summary comment to the issue. |
-| `commit_and_update` | Stages all changes, generates a conventional commit message from the diff, commits, pushes to the current branch, and posts a rich progress comment to the linked issue. |
+| `commit_and_update` | Stages all changes, builds a commit message from the provided `hint` (or the changed file list), commits, pushes to the issue branch, and posts a rich progress comment to the linked issue. |
 | `delete_issue` | Closes an issue **and** deletes its matching branch. Destructive — requires `confirmed: true`. |
 | `delete_branch` | Deletes a branch **and** closes its matching issue. Destructive — requires `confirmed: true`. |
 
