@@ -1,3 +1,4 @@
+import { execSync } from "node:child_process";
 import { z } from "zod";
 import {
   getIssue,
@@ -88,13 +89,45 @@ export async function handler(input: z.infer<typeof inputSchema>) {
   const body = bodyParts.join("\n");
 
   if (config.updateDocs) {
-    await updateProjectDocs({
+    const docsResult = await updateProjectDocs({
       trigger: "create_pull_request",
       issueNumber: input.issue_number,
       issueTitle: issue.title,
       summary: input.summary ?? cleanedDescription,
       branchName,
     });
+
+    // If docs were updated, commit the CHANGELOG onto the current (PR) branch so
+    // it's included in the PR diff. A failure here must never block PR creation.
+    if (docsResult) {
+      try {
+        execSync("git add CHANGELOG.md", { stdio: "ignore" });
+        execSync(`git commit -m "docs: update CHANGELOG for #${input.issue_number}"`, { stdio: "ignore" });
+      } catch (err) {
+        console.warn(
+          `[okffs] Failed to commit CHANGELOG for #${input.issue_number} — continuing without it.`,
+          err instanceof Error ? err.message : err
+        );
+      }
+    }
+  }
+
+  // Push the branch to remote so GitHub sees the commits before PR creation.
+  // If commits exist only locally, the API would report no commits ahead of base.
+  try {
+    execSync(`git push origin ${branchName}`, { stdio: "ignore" });
+  } catch (err) {
+    console.warn(
+      `[okffs] Failed to push branch ${branchName} to remote.`,
+      err instanceof Error ? err.message : err
+    );
+    await addIssueComment(
+      input.issue_number,
+      `PR not created — could not push branch \`${branchName}\` to remote. Please push manually (\`git push origin ${branchName}\`) then run \`create_pull_request\` to continue.`
+    );
+    return {
+      content: [{ type: "text" as const, text: `PR not created — could not push branch \`${branchName}\` to remote. Push manually (\`git push origin ${branchName}\`) then run create_pull_request to continue.` }],
+    };
   }
 
   const pr = await createPullRequest(title, body, branchName, baseBranch);

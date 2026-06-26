@@ -1,5 +1,6 @@
+import { execSync } from "node:child_process";
 import { z } from "zod";
-import { createIssue, updateIssueBody, getDefaultBranch, getRef, createBranch, slugify } from "../github.js";
+import { createIssue, updateIssueBody, getDefaultBranch, getRef, createBranch, slugify, createDraftPullRequest } from "../github.js";
 import { config } from "../config.js";
 
 export const name = "create_issue";
@@ -32,10 +33,45 @@ export async function handler(input: z.infer<typeof inputSchema>) {
   const updatedBody = `${input.description}\n\n**Branch:** \`${branchName}\``;
   await updateIssueBody(issue.number, updatedBody);
 
+  // Push an empty init commit so the branch diverges from base,
+  // allowing GitHub to accept a draft PR immediately.
+  try {
+    const previousBranch = execSync("git rev-parse --abbrev-ref HEAD", { encoding: "utf8" }).trim();
+    execSync(`git fetch origin`, { stdio: "ignore" });
+    execSync(`git checkout ${branchName}`, { stdio: "ignore" });
+    execSync(`git commit --allow-empty -m "chore: init branch for #${issue.number}"`, { stdio: "ignore" });
+    execSync(`git push origin ${branchName}`, { stdio: "ignore" });
+    if (previousBranch && previousBranch !== branchName) {
+      execSync(`git checkout ${previousBranch}`, { stdio: "ignore" });
+    }
+  } catch (err) {
+    console.warn("[okffs] Failed to push init commit:", err instanceof Error ? err.message : err);
+  }
+
+  let draftPRUrl: string | null = null;
+  if (config.autoPR) {
+    try {
+      const baseBranch = defaultBranch;
+      const pr = await createDraftPullRequest(
+        `WIP: #${issue.number} - ${input.title}`,
+        `Closes #${issue.number}`,
+        branchName,
+        baseBranch
+      );
+      draftPRUrl = pr.html_url;
+    } catch (err) {
+      console.warn("[okffs] Failed to create draft PR:", err instanceof Error ? err.message : err);
+    }
+  }
+
   const lines = [
     `Issue #${issue.number} created: ${issue.html_url}`,
     `Branch: \`${branchName}\``,
   ];
+
+  if (draftPRUrl) {
+    lines.push(`Draft PR: ${draftPRUrl}`);
+  }
 
   if (resolvedAssignees.length > 0) {
     const source = input.assignees ? "" : " (default)";

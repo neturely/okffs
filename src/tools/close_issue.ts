@@ -26,21 +26,7 @@ export async function handler(input: z.infer<typeof inputSchema>) {
     await addIssueComment(input.issue_number, comment);
   }
 
-  if (config.autoPR) {
-    try {
-      const { handler: createPRHandler } = await import("./create_pull_request.js");
-      await createPRHandler({ issue_number: input.issue_number });
-    } catch (err) {
-      console.warn("[okffs] auto PR creation failed:", err);
-      const branchHint = branchName ? ` from branch \`${branchName}\`` : "";
-      await addIssueComment(
-        input.issue_number,
-        `Issue closed. Auto PR creation failed — create the PR manually${branchHint}.`
-      );
-    }
-  }
-
-  if (config.updateDocs && !config.autoPR) {
+  if (config.updateDocs) {
     await updateProjectDocs({
       trigger: "close_issue",
       issueNumber: input.issue_number,
@@ -57,6 +43,6 @@ export async function handler(input: z.infer<typeof inputSchema>) {
   }
 
   return {
-    content: [{ type: "text" as const, text: `Issue #${input.issue_number} closed.` }],
+    content: [{ type: "text" as const, text: `Issue #${input.issue_number} closed.\n\n💡 Tip: run /clear to reset Claude Code context and save tokens before starting the next issue.` }],
   };
 }
