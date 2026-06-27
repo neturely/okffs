@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { createIssue, updateIssueBody, getDefaultBranch, getRef, createBranch, slugify, createDraftPullRequest } from "../github.js";
+import { createIssue, updateIssueBody, getDefaultBranch, getRef, createBranch, buildBranchName, createDraftPullRequest } from "../github.js";
 import { config } from "../config.js";
 import { git, currentBranch } from "../git.js";
 
@@ -24,7 +24,7 @@ export async function handler(input: z.infer<typeof inputSchema>) {
 
   const issue = await createIssue(input.title, input.description, resolvedAssignees, resolvedLabels, input.milestone);
 
-  const branchName = `${issue.number}-${slugify(input.title)}`;
+  const branchName = buildBranchName(issue.number, input.title);
 
   const defaultBranch = await getDefaultBranch();
   const ref = await getRef(defaultBranch);

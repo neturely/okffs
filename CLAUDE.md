@@ -27,10 +27,16 @@ Guidance for Claude Code when working in this repository.
 42-add-hero-section-to-homepage
 ```
 
+When `OKFFS_IDENTIFIER` is set, a project-scoped prefix is inserted: `{issue-number}-{identifier}-{kebab-title-slug}`.
+
+```
+42-okffs-add-hero-section-to-homepage
+```
+
 ### Pull requests
 
 - Title: `Close #42 - Add hero section to homepage`
-- Body **always** includes `Closes #42` — this triggers GitHub's native auto-close when the PR merges to `main`.
+- Body **always** includes `Closes #42` — this triggers GitHub's native auto-close **only when the PR merges into the repository's default branch** (usually `main`). If `OKFFS_BASE_BRANCH` points at a non-default branch (e.g. `develop`), GitHub will **not** auto-close the issue on merge — close it manually with `close_issue`. `create_pull_request` warns when the PR targets a non-default base.
 
 ## Build phases
 
@@ -39,10 +45,11 @@ Guidance for Claude Code when working in this repository.
 - TypeScript MCP server scaffolded.
 - PAT auth via `.env` (`GITHUB_TOKEN`, `GITHUB_OWNER`, `GITHUB_REPO`).
 - `.env` is loaded automatically via `dotenv` from `process.cwd()` — no `--env-file` flag needed in `.mcp.json`.
-- Tools: `create_issue`, `list_issues`, `close_issue`, `delete_issue`, `delete_branch`, `get_issue`, `comment_issue`, `link_issues`, `create_issues_from_list`, `create_pull_request`, `commit_and_update`.
+- Tools: `create_issue`, `list_issues`, `close_issue`, `delete_issue`, `delete_branch`, `get_issue`, `comment_issue`, `link_issues`, `create_issues_from_list`, `plan`, `create_pull_request`, `commit_and_update`.
 - `create_issue` auto-creates a branch, embeds the branch name in the issue body, applies default assignees/labels from `.env`, infers labels from title/description and merges with `OKFFS_DEFAULT_LABELS`. Supports optional `assignees`, `labels`, `milestone`. If a relationship is mentioned (blocked by, blocking, parent), automatically calls `link_issues` after creation. If `OKFFS_AUTO_PR=true`, pushes an empty init commit to the branch (capturing and restoring the current branch) and opens a draft PR immediately.
 - `create_issues_from_list` accepts a list of tasks and creates all issues + branches in one shot. Two-step confirmation. Per-task `labels`, `assignees`, and `milestone` supported.
-- `list_issues` returns each issue with its issue URL and inferred branch URL.
+- `plan` takes a free-text `description` plus the issue breakdown Claude generates from it (titles, descriptions, labels, inter-task relationships referenced by 1-based index) and creates all issues + branches in one shot. Two-step confirmation (preview, then `confirmed: true`). Resolves task-index relationships to real issue numbers and writes them to each issue's `## Relationships` section. If `OKFFS_AUTO_PR=true`, pushes an empty init commit per branch and opens a draft PR for each. Extends the `create_issues_from_list` pattern — Claude is the AI layer that produces the breakdown.
+- `list_issues` returns each open issue with its issue URL, branch name + URL, any matched open/draft PR (by head branch), and its relationships (parent, children, blocked-by, blocking) rendered as a tree. Children are derived by inverting `Parent:` links across issues. Replaces the need for a separate PR-listing tool.
 - `get_issue` fetches full issue details — title, body, status, branch, assignees, labels.
 - `comment_issue` posts a comment to an issue. Use after committing to log what was done.
 - `link_issues` links two issues with a relationship — `blocked_by`, `blocking`, or `parent`. Stored in the issue body under a `## Relationships` section.
@@ -50,9 +57,10 @@ Guidance for Claude Code when working in this repository.
 - `commit_and_update` stages all changes, builds a commit message from the optional `hint` (or the changed file list), commits, pushes to the issue branch, and posts a rich progress comment to the linked issue.
 - `delete_issue` closes an issue and deletes its branch. Two-step: call once for a warning, re-call with `confirmed: true` to proceed. Posts a comment before acting.
 - `delete_branch` deletes a branch and closes its issue (issue number parsed from branch name prefix). Same two-step confirmation pattern. Posts a comment before acting.
-- Optional `.env` defaults: `OKFFS_DEFAULT_ASSIGNEES`, `OKFFS_DEFAULT_LABELS`, `OKFFS_PROMPT_METADATA`, `OKFFS_BASE_BRANCH`, `OKFFS_UPDATE_DOCS`, `OKFFS_AUTO_PR`.
+- Optional `.env` defaults: `OKFFS_DEFAULT_ASSIGNEES`, `OKFFS_DEFAULT_LABELS`, `OKFFS_PROMPT_METADATA`, `OKFFS_BASE_BRANCH`, `OKFFS_IDENTIFIER`, `OKFFS_UPDATE_DOCS`, `OKFFS_AUTO_PR`.
 - `OKFFS_BASE_BRANCH` — branch to create new issue branches from. Defaults to the repo's default branch.
-- `OKFFS_UPDATE_DOCS` — set to `true` to auto-update local project docs (CHANGELOG.md, CLAUDE.md, SECURITY.md, CONTRIBUTING.md) on workflow events. Default `false`. README.md is intentionally excluded.
+- `OKFFS_IDENTIFIER` — optional project-scoped prefix inserted into branch names: `{issue-number}-{identifier}-{slug}`. Unset by default.
+- `OKFFS_UPDATE_DOCS` — set to `true` to auto-update local project docs (CHANGELOG.md, CLAUDE.md, SECURITY.md, CONTRIBUTING.md) when a pull request is created (`create_pull_request`). Default `false`. README.md is intentionally excluded. `comment_issue` and `close_issue` do not trigger doc updates — `create_pull_request` is the single source of auto-changelog entries (avoids duplicate/noisy entries).
 - `OKFFS_AUTO_PR` — set to `true` to open a draft PR when a new issue branch is created (via `create_issue`). Default `false`.
 
 ### Phase 2 — Bulk creation ✓ Complete
@@ -75,7 +83,7 @@ Guidance for Claude Code when working in this repository.
 - Before creating the PR, the branch is pushed to remote (`git push origin <branch>`). If the push fails, a comment is posted to the issue and the PR is not created.
 - `OKFFS_AUTO_PR` no longer triggers a PR on close — the draft PR is opened at branch-creation time by `create_issue`. To accept the draft PR immediately, `create_issue` first pushes an empty init commit so the branch diverges from base.
 - `commit_and_update` tool — stages all changes, generates a conventional commit message, commits, pushes to the current branch, and posts a rich progress comment to the linked issue.
-- GitHub natively closes the issue on merge via `Closes #N` — no webhook infrastructure needed.
+- GitHub natively closes the issue on merge via `Closes #N` — no webhook infrastructure needed. Note: this only fires when merging into the repo's default branch. With a `develop`-based workflow (`OKFFS_BASE_BRANCH=develop`), merge to `develop` does not auto-close; use `close_issue`.
 - Edge case: if the branch has no commits ahead of the base branch, a friendly comment is posted instead of erroring.
 
 ### Phase 5 — GitHub Projects v2 (optional, later)
@@ -102,7 +110,7 @@ Guidance for Claude Code when working in this repository.
 - `.env` holds the GitHub PAT (`GITHUB_TOKEN`) with fine-grained permissions. It is git-ignored — see [.env.example](.env.example).
 - `.env` is loaded automatically at startup via `dotenv` from `process.cwd()`. No `--env-file` flag required in `.mcp.json`.
 - Required: `GITHUB_TOKEN`, `GITHUB_OWNER`, `GITHUB_REPO`.
-- Optional: `OKFFS_DEFAULT_ASSIGNEES` (comma-separated), `OKFFS_DEFAULT_LABELS` (comma-separated), `OKFFS_PROMPT_METADATA` (set to `false` to silence the tip), `OKFFS_BASE_BRANCH` (branch to create from; defaults to repo default), `OKFFS_UPDATE_DOCS` (set to `true` to enable auto doc updates), `OKFFS_AUTO_PR` (set to `true` to auto-create PR on issue close), `OKFFS_EXCLUDE_DOCS` (comma-separated filenames to exclude from auto-updates — valid options: `CLAUDE.md`, `SECURITY.md`, `CONTRIBUTING.md`, `CHANGELOG.md`).
+- Optional: `OKFFS_DEFAULT_ASSIGNEES` (comma-separated), `OKFFS_DEFAULT_LABELS` (comma-separated), `OKFFS_PROMPT_METADATA` (set to `false` to silence the tip), `OKFFS_BASE_BRANCH` (branch to create from; defaults to repo default), `OKFFS_IDENTIFIER` (optional project-scoped branch prefix: `{number}-{identifier}-{slug}`), `OKFFS_UPDATE_DOCS` (set to `true` to enable auto doc updates), `OKFFS_AUTO_PR` (set to `true` to auto-create PR on issue close), `OKFFS_EXCLUDE_DOCS` (comma-separated filenames to exclude from auto-updates — valid options: `CLAUDE.md`, `SECURITY.md`, `CONTRIBUTING.md`, `CHANGELOG.md`).
 
 ## Local dev vs published package
 

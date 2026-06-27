@@ -34,6 +34,15 @@ function getChangeType(ctx: DocsContext): string {
   return "Changed";
 }
 
+// Truncate at a word boundary (never mid-word) so summaries don't get cut into
+// a half-word followed by an ellipsis.
+function truncateAtWord(text: string, max: number): string {
+  if (text.length <= max) return text;
+  const slice = text.slice(0, max);
+  const lastSpace = slice.lastIndexOf(" ");
+  return (lastSpace > 0 ? slice.slice(0, lastSpace) : slice).trimEnd() + "…";
+}
+
 function buildChangelogEntry(ctx: DocsContext): string {
   const ref = ctx.issueNumber ? ` ([#${ctx.issueNumber}](https://github.com/${process.env.GITHUB_OWNER}/${process.env.GITHUB_REPO}/issues/${ctx.issueNumber}))` : "";
   const title = ctx.issueTitle ?? ctx.trigger;
@@ -42,11 +51,55 @@ function buildChangelogEntry(ctx: DocsContext): string {
     .replace(/\*\*Branch:\*\*\s*`[^`]+`/g, "")
     .replace(/## Relationships[\s\S]*/g, "")
     .replace(/^(Closed:|Fixed:|Added:|Changed:)\s*/i, "")
+    .replace(/\s+/g, " ") // collapse newlines/runs of whitespace into a single line
     .trim();
 
-  const truncated = cleanSummary.length > 300 ? cleanSummary.slice(0, 297) + "..." : cleanSummary;
+  const truncated = truncateAtWord(cleanSummary, 200);
   const summaryPart = truncated && truncated !== title ? ` — ${truncated}` : "";
   return `- ${title}${ref}${summaryPart}`;
+}
+
+// Insert a changelog entry under the ## [Unreleased] section, scoping the search
+// for the type heading (### Added, ### Fixed, …) to that section only. Without
+// scoping, an existing "### Added" under the latest *released* version would
+// match first and the entry would land in the wrong place.
+function insertChangelogEntry(changelog: string, type: string, entry: string): string {
+  const unreleasedMarker = "## [Unreleased]";
+  const typeHeading = `### ${type}`;
+  const markerIdx = changelog.indexOf(unreleasedMarker);
+
+  // No [Unreleased] section yet — add one above the first released version
+  // heading, or at the end of the file if there are none.
+  if (markerIdx === -1) {
+    const block = `${unreleasedMarker}\n${typeHeading}\n${entry}\n\n`;
+    const firstVersionIdx = changelog.search(/\n## \[/);
+    if (firstVersionIdx !== -1) {
+      const at = firstVersionIdx + 1; // preserve the leading newline
+      return changelog.slice(0, at) + block + changelog.slice(at);
+    }
+    return changelog.trimEnd() + "\n\n" + block.trimEnd() + "\n";
+  }
+
+  // Bounds of the [Unreleased] block: from the marker to the next "## " heading.
+  const afterMarker = markerIdx + unreleasedMarker.length;
+  const nextSectionRel = changelog.slice(afterMarker).search(/\n## /);
+  const blockEnd = nextSectionRel === -1 ? changelog.length : afterMarker + nextSectionRel;
+
+  const head = changelog.slice(0, afterMarker);
+  let block = changelog.slice(afterMarker, blockEnd);
+  const tail = changelog.slice(blockEnd);
+
+  const typeIdxInBlock = block.indexOf(typeHeading);
+  if (typeIdxInBlock !== -1) {
+    // Insert right after the existing type heading within the Unreleased block.
+    const insertAt = typeIdxInBlock + typeHeading.length;
+    block = block.slice(0, insertAt) + "\n" + entry + block.slice(insertAt);
+  } else {
+    // Add the type heading and entry at the end of the Unreleased block.
+    block = block.replace(/\s*$/, "") + `\n${typeHeading}\n${entry}\n`;
+  }
+
+  return head + block + tail;
 }
 
 function shouldUpdateSecurity(ctx: DocsContext): boolean {
@@ -92,26 +145,7 @@ function determineUpdates(ctx: DocsContext, base: string): FileUpdate[] {
     const type = getChangeType(ctx);
     const entry = buildChangelogEntry(ctx);
     if (changelog !== null) {
-      const unreleasedMarker = "## [Unreleased]";
-      const typeHeading = `### ${type}`;
-      let newContent: string;
-      if (changelog.includes(unreleasedMarker)) {
-        if (changelog.includes(typeHeading)) {
-          newContent = changelog.replace(typeHeading, typeHeading + "\n" + entry);
-        } else {
-          // Find the end of the [Unreleased] block and append the new type heading there
-          // instead of inserting right after the marker, to avoid gaps between type sections
-          const unreleasedEnd = changelog.indexOf("\n## ", changelog.indexOf(unreleasedMarker) + 1);
-          if (unreleasedEnd !== -1) {
-            newContent = changelog.slice(0, unreleasedEnd) + "\n" + typeHeading + "\n" + entry + changelog.slice(unreleasedEnd);
-          } else {
-            newContent = changelog.trimEnd() + "\n" + typeHeading + "\n" + entry;
-          }
-        }
-      } else {
-        newContent = changelog.trimEnd() + "\n\n" + typeHeading + "\n" + entry;
-      }
-      updates.push({ path: changelogPath, content: newContent, created: false });
+      updates.push({ path: changelogPath, content: insertChangelogEntry(changelog, type, entry), created: false });
     } else {
       updates.push({
         path: changelogPath,
@@ -162,26 +196,27 @@ function determineUpdates(ctx: DocsContext, base: string): FileUpdate[] {
   return updates;
 }
 
-export async function updateProjectDocs(ctx: DocsContext): Promise<string | null> {
+// Returns the paths of the files that were actually written, so callers can
+// stage exactly those (rather than assuming only CHANGELOG.md changed).
+export async function updateProjectDocs(ctx: DocsContext): Promise<string[]> {
   try {
     const base = process.cwd();
     const updates = determineUpdates(ctx, base);
-    if (updates.length === 0) return null;
+    if (updates.length === 0) return [];
 
-    const results: string[] = [];
+    const written: string[] = [];
     for (const u of updates) {
       try {
         fs.writeFileSync(u.path, u.content, "utf8");
-        const name = path.basename(u.path);
-        results.push(u.created ? `created ${name}` : `updated ${name}`);
+        written.push(u.path);
       } catch (err) {
         console.warn(`[okffs] docs: failed to write ${u.path}:`, err);
       }
     }
 
-    return results.length > 0 ? results.join(", ") : null;
+    return written;
   } catch (err) {
     console.warn("[okffs] docs: unexpected error:", err);
-    return null;
+    return [];
   }
 }

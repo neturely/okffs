@@ -53,6 +53,7 @@ Once configured, Claude Code will pick up the tools automatically. You can ask C
 - *"Create an issue called 'Fix login button' with description '...'"*
 - *"List all open issues"*
 - *"Create issues from this task list: ..."*
+- *"Plan out the work for adding user authentication and create the issues"*
 - *"Post a comment to issue #12 saying what was done"*
 - *"Mark issue #5 as blocked by issue #3"*
 - *"Done with issue #42, close it and open a PR"*
@@ -102,6 +103,7 @@ No installation needed. Add the `.mcp.json` and `.env` to your project as shown 
    OKFFS_DEFAULT_LABELS=okffs                     # merged with any inferred labels
    OKFFS_PROMPT_METADATA=true                     # set to false to hide the tip
    OKFFS_BASE_BRANCH=main                         # branch to create issues from; defaults to repo default
+   OKFFS_IDENTIFIER=okffs                         # optional prefix: branches become {number}-{identifier}-{slug}
    OKFFS_UPDATE_DOCS=false                        # set to true to auto-update project docs on workflow events
    OKFFS_AUTO_PR=false                            # set to true to open a draft PR when a new issue branch is created
    OKFFS_EXCLUDE_DOCS=CLAUDE.md,CONTRIBUTING.md   # comma-separated — valid options: CLAUDE.md, SECURITY.md, CONTRIBUTING.md, CHANGELOG.md
@@ -130,7 +132,8 @@ No installation needed. Add the `.mcp.json` and `.env` to your project as shown 
 |------|-------------|
 | `create_issue` | Creates a GitHub issue and a matching branch. Infers labels automatically; merges them with `OKFFS_DEFAULT_LABELS`. Supports optional `assignees`, `labels`, and `milestone`. If `OKFFS_AUTO_PR=true`, pushes an empty init commit and opens a draft PR for the branch immediately. |
 | `create_issues_from_list` | Creates multiple issues and branches from a task list in one shot. Confirms before acting. Per-task `labels`, `assignees`, and `milestone` supported. |
-| `list_issues` | Lists all open issues with their issue URL and branch URL. |
+| `plan` | Takes a free-text description of work plus the issue breakdown Claude generates from it (titles, descriptions, labels, inter-task relationships) and creates all issues + branches in one shot. Two-step confirmation. Wires up relationships between the new issues; opens a draft PR per branch when `OKFFS_AUTO_PR=true`. |
+| `list_issues` | Lists all open issues, each with its issue URL, branch + URL, any linked open/draft PR (matched by head branch), and its relationships (parent, children, blocked-by, blocking) as a tree. |
 | `get_issue` | Fetches full details of an issue — title, body, labels, assignees, branch, and status. |
 | `comment_issue` | Posts a comment to an issue. Useful for logging work done on a branch. |
 | `link_issues` | Links two issues with a relationship — `blocked_by`, `blocking`, or `parent`. Stored in the issue body under a `## Relationships` section. |
@@ -144,10 +147,10 @@ Destructive tools (`delete_issue`, `delete_branch`) follow a two-step confirmati
 
 ## Automatic doc updates
 
-When `OKFFS_UPDATE_DOCS=true` in your `.env`, okffs will automatically update local project docs when workflow events fire (closing issues, creating PRs, posting comments). Changes are written to local files — committing is your responsibility.
+When `OKFFS_UPDATE_DOCS=true` in your `.env`, okffs automatically updates local project docs when a pull request is created (`create_pull_request`). Changes are written to local files — committing is your responsibility. Commenting on or closing an issue does **not** trigger doc updates, to keep the CHANGELOG free of noise and duplicate entries.
 
 Files updated when relevant:
-- `CHANGELOG.md` — always updated, created if missing. Entries follow [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) format. `create_pull_request` updates it before opening the PR and commits it onto the branch so it's included in the diff.
+- `CHANGELOG.md` — always updated, created if missing. Entries follow [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) format, added under `## [Unreleased]`. `create_pull_request` updates it before opening the PR and commits it onto the branch so it's included in the diff. This is the single source of auto-changelog entries.
 - `CLAUDE.md` — updated when convention, workflow, tool, config, or architecture keywords are detected.
 - `SECURITY.md` — updated when security, vulnerability, or CVE keywords are detected.
 - `CONTRIBUTING.md` — updated when convention, contributing, or workflow keywords are detected.
@@ -169,7 +172,7 @@ README.md is intentionally excluded from auto-updates — maintain it manually.
 **Pull requests:**
 
 - Title: `Close #42 - Add hero section to homepage`
-- Body always includes `Closes #42` so GitHub auto-closes the issue when the PR merges to `main`.
+- Body always includes `Closes #42` so GitHub auto-closes the issue when the PR merges into the repository's **default branch** (usually `main`). If you set `OKFFS_BASE_BRANCH` to a non-default branch (e.g. `develop`), GitHub will not auto-close on merge — close the issue manually with `close_issue`. `create_pull_request` flags this when the PR targets a non-default base.
 
 **Operating principles:**
 

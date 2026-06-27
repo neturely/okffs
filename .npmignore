@@ -10,3 +10,4 @@ tsconfig.json
 instructions
 *.md
 !README.md
+!CHANGELOG.md

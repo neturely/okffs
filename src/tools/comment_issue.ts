@@ -1,7 +1,5 @@
 import { z } from "zod";
-import { addIssueComment, getIssue, owner, repo } from "../github.js";
-import { config } from "../config.js";
-import { updateProjectDocs } from "../docs.js";
+import { addIssueComment, owner, repo } from "../github.js";
 
 export const name = "comment_issue";
 
@@ -14,17 +12,10 @@ export const inputSchema = z.object({
 });
 
 export async function handler(input: z.infer<typeof inputSchema>) {
+  // Note: commenting intentionally does not trigger CHANGELOG updates — it is
+  // too frequent to be a meaningful changelog event. create_pull_request is the
+  // single source of auto-changelog entries.
   await addIssueComment(input.issue_number, input.comment);
-
-  if (config.updateDocs) {
-    const issue = await getIssue(input.issue_number);
-    await updateProjectDocs({
-      trigger: "comment_issue",
-      issueNumber: input.issue_number,
-      issueTitle: issue.title,
-      summary: input.comment.slice(0, 300),
-    });
-  }
 
   return {
     content: [
