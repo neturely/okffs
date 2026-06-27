@@ -69,12 +69,14 @@ export function slugify(title: string): string {
 /**
  * Build the branch name for an issue.
  * Format: {issue-number}-{slug}, or {issue-number}-{identifier}-{slug}
- * when OKFFS_IDENTIFIER is set.
+ * when OKFFS_IDENTIFIER is set. The identifier is slugified too, so spaces or
+ * other characters invalid in a git ref can't break branch creation.
  */
 export function buildBranchName(issueNumber: number, title: string): string {
   const slug = slugify(title);
-  return config.identifier
-    ? `${issueNumber}-${config.identifier}-${slug}`
+  const identifier = config.identifier ? slugify(config.identifier) : "";
+  return identifier
+    ? `${issueNumber}-${identifier}-${slug}`
     : `${issueNumber}-${slug}`;
 }
 

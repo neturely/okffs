@@ -196,8 +196,10 @@ function determineUpdates(ctx: DocsContext, base: string): FileUpdate[] {
   return updates;
 }
 
-// Returns the paths of the files that were actually written, so callers can
-// stage exactly those (rather than assuming only CHANGELOG.md changed).
+// Returns the repo-relative paths of the files that were actually written, so
+// callers can stage exactly those (rather than assuming only CHANGELOG.md
+// changed). Paths are relative to base (process.cwd()) so they pass cleanly to
+// `git add`, which runs from the same working directory.
 export async function updateProjectDocs(ctx: DocsContext): Promise<string[]> {
   try {
     const base = process.cwd();
@@ -208,7 +210,7 @@ export async function updateProjectDocs(ctx: DocsContext): Promise<string[]> {
     for (const u of updates) {
       try {
         fs.writeFileSync(u.path, u.content, "utf8");
-        written.push(u.path);
+        written.push(path.relative(base, u.path));
       } catch (err) {
         console.warn(`[okffs] docs: failed to write ${u.path}:`, err);
       }
