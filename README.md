@@ -53,6 +53,7 @@ Once configured, Claude Code will pick up the tools automatically. You can ask C
 - *"Create an issue called 'Fix login button' with description '...'"*
 - *"List all open issues"*
 - *"Create issues from this task list: ..."*
+- *"Plan out the work for adding user authentication and create the issues"*
 - *"Post a comment to issue #12 saying what was done"*
 - *"Mark issue #5 as blocked by issue #3"*
 - *"Done with issue #42, close it and open a PR"*
