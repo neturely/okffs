@@ -5,6 +5,7 @@ See [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 ### Added
+- Redesigned `list_issues` — each open issue now shows its branch + URL, any linked open/draft PR (matched by head branch), and its relationships (parent, children, blocked-by, blocking) as a tree ([#43](https://github.com/2b9sa2owa/okffs/issues/43)).
 - New `plan` tool — takes a free-text description plus the issue breakdown Claude generates from it (titles, descriptions, labels, inter-task relationships), previews the plan, and creates all issues + branches in one shot. Resolves relationships to issue numbers and opens a draft PR per branch when `OKFFS_AUTO_PR=true` ([#42](https://github.com/2b9sa2owa/okffs/issues/42)).
 - `OKFFS_IDENTIFIER` env var — when set, branch names use `{issue-number}-{identifier}-{slug}` instead of `{issue-number}-{slug}` ([#41](https://github.com/2b9sa2owa/okffs/issues/41)).
 
@@ -15,7 +16,6 @@ See [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `.github/instructions/okffs.instructions.md` Copilot instructions file.
 
 ### Changed
-- feat: redesign list_issues — hierarchy tree, branch, and linked PR per issue ([#43](https://github.com/2b9sa2owa/okffs/issues/43)) — Redesigns list_issues to show a complete picture per issue in one call: issue number/title/URL, branch name + URL, any linked open or draft PR (matched by comparing PR head branch to the issue branch), and relationships (parent, children, blocked-by, blocking) rendered as a tree. Children are der...
 - Redesigned `OKFFS_AUTO_PR`: a draft PR is now opened at branch-creation time by `create_issue` (instead of on issue close), pushing an empty init commit first so GitHub accepts the draft immediately.
 - `close_issue` now returns a `/clear` tip and no longer triggers a PR on close.
 - `CHANGELOG.md` is now shipped in the npm package.
