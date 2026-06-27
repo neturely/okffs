@@ -9,6 +9,7 @@ import {
   getOpenPullRequestForBranch,
   updatePullRequest,
   markPullRequestReady,
+  getRepoDefaultBranch,
   addIssueComment,
 } from "../github.js";
 import { config } from "../config.js";
@@ -40,6 +41,20 @@ export async function handler(input: z.infer<typeof inputSchema>) {
   }
 
   const baseBranch = await getDefaultBranch();
+
+  // `Closes #N` only auto-closes the issue when the PR merges into the repo's
+  // default branch. If OKFFS_BASE_BRANCH targets a non-default branch (e.g.
+  // develop), warn that the issue must be closed manually after merge.
+  let autoCloseNote = "";
+  if (config.baseBranch) {
+    const repoDefault = await getRepoDefaultBranch();
+    if (baseBranch !== repoDefault) {
+      autoCloseNote =
+        `\n\n⚠️ This PR targets \`${baseBranch}\`, not the default branch \`${repoDefault}\` — ` +
+        `merging will **not** auto-close #${input.issue_number}. Close it manually with \`close_issue\` after merge.`;
+    }
+  }
+
   const commits = await getBranchCommits(branchName, baseBranch);
   const comments = await getIssueComments(input.issue_number);
 
@@ -91,9 +106,9 @@ export async function handler(input: z.infer<typeof inputSchema>) {
 
   const body = bodyParts.join("\n");
 
-  let docsResult: string | null = null;
+  let updatedDocs: string[] = [];
   if (config.updateDocs) {
-    docsResult = await updateProjectDocs({
+    updatedDocs = await updateProjectDocs({
       trigger: "create_pull_request",
       issueNumber: input.issue_number,
       issueTitle: issue.title,
@@ -120,15 +135,17 @@ export async function handler(input: z.infer<typeof inputSchema>) {
   }
 
   try {
-    // If docs were updated, commit the CHANGELOG so it's in the PR diff. A
-    // failure here must never block PR creation.
-    if (docsResult) {
+    // If docs were updated, commit all of them so they're in the PR diff —
+    // not just CHANGELOG.md (updateProjectDocs may also touch CLAUDE.md,
+    // CONTRIBUTING.md, SECURITY.md). A failure here must never block PR creation.
+    if (updatedDocs.length > 0) {
       try {
-        git(["add", "CHANGELOG.md"]);
-        git(["commit", "-m", `docs: update CHANGELOG for #${input.issue_number}`]);
+        const names = updatedDocs.map((p) => p.split(/[\\/]/).pop()).join(", ");
+        git(["add", ...updatedDocs]);
+        git(["commit", "-m", `docs: update ${names} for #${input.issue_number}`]);
       } catch (err) {
         console.warn(
-          `[okffs] Failed to commit CHANGELOG for #${input.issue_number} — continuing without it.`,
+          `[okffs] Failed to commit doc updates for #${input.issue_number} — continuing without them.`,
           err instanceof Error ? err.message : err
         );
       }
@@ -191,10 +208,10 @@ export async function handler(input: z.infer<typeof inputSchema>) {
     `PR ${action}: ${pr.html_url}`,
     ``,
     body,
-  ].join("\n");
+  ].join("\n") + autoCloseNote;
   await addIssueComment(input.issue_number, comment);
 
   return {
-    content: [{ type: "text" as const, text: `PR #${pr.number} ${action}: ${pr.html_url}` }],
+    content: [{ type: "text" as const, text: `PR #${pr.number} ${action}: ${pr.html_url}${autoCloseNote}` }],
   };
 }

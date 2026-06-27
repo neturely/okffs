@@ -196,26 +196,27 @@ function determineUpdates(ctx: DocsContext, base: string): FileUpdate[] {
   return updates;
 }
 
-export async function updateProjectDocs(ctx: DocsContext): Promise<string | null> {
+// Returns the paths of the files that were actually written, so callers can
+// stage exactly those (rather than assuming only CHANGELOG.md changed).
+export async function updateProjectDocs(ctx: DocsContext): Promise<string[]> {
   try {
     const base = process.cwd();
     const updates = determineUpdates(ctx, base);
-    if (updates.length === 0) return null;
+    if (updates.length === 0) return [];
 
-    const results: string[] = [];
+    const written: string[] = [];
     for (const u of updates) {
       try {
         fs.writeFileSync(u.path, u.content, "utf8");
-        const name = path.basename(u.path);
-        results.push(u.created ? `created ${name}` : `updated ${name}`);
+        written.push(u.path);
       } catch (err) {
         console.warn(`[okffs] docs: failed to write ${u.path}:`, err);
       }
     }
 
-    return results.length > 0 ? results.join(", ") : null;
+    return written;
   } catch (err) {
     console.warn("[okffs] docs: unexpected error:", err);
-    return null;
+    return [];
   }
 }

@@ -172,7 +172,7 @@ README.md is intentionally excluded from auto-updates — maintain it manually.
 **Pull requests:**
 
 - Title: `Close #42 - Add hero section to homepage`
-- Body always includes `Closes #42` so GitHub auto-closes the issue when the PR merges to `main`.
+- Body always includes `Closes #42` so GitHub auto-closes the issue when the PR merges into the repository's **default branch** (usually `main`). If you set `OKFFS_BASE_BRANCH` to a non-default branch (e.g. `develop`), GitHub will not auto-close on merge — close the issue manually with `close_issue`. `create_pull_request` flags this when the PR targets a non-default base.
 
 **Operating principles:**
 

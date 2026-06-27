@@ -36,7 +36,7 @@ When `OKFFS_IDENTIFIER` is set, a project-scoped prefix is inserted: `{issue-num
 ### Pull requests
 
 - Title: `Close #42 - Add hero section to homepage`
-- Body **always** includes `Closes #42` — this triggers GitHub's native auto-close when the PR merges to `main`.
+- Body **always** includes `Closes #42` — this triggers GitHub's native auto-close **only when the PR merges into the repository's default branch** (usually `main`). If `OKFFS_BASE_BRANCH` points at a non-default branch (e.g. `develop`), GitHub will **not** auto-close the issue on merge — close it manually with `close_issue`. `create_pull_request` warns when the PR targets a non-default base.
 
 ## Build phases
 
@@ -83,7 +83,7 @@ When `OKFFS_IDENTIFIER` is set, a project-scoped prefix is inserted: `{issue-num
 - Before creating the PR, the branch is pushed to remote (`git push origin <branch>`). If the push fails, a comment is posted to the issue and the PR is not created.
 - `OKFFS_AUTO_PR` no longer triggers a PR on close — the draft PR is opened at branch-creation time by `create_issue`. To accept the draft PR immediately, `create_issue` first pushes an empty init commit so the branch diverges from base.
 - `commit_and_update` tool — stages all changes, generates a conventional commit message, commits, pushes to the current branch, and posts a rich progress comment to the linked issue.
-- GitHub natively closes the issue on merge via `Closes #N` — no webhook infrastructure needed.
+- GitHub natively closes the issue on merge via `Closes #N` — no webhook infrastructure needed. Note: this only fires when merging into the repo's default branch. With a `develop`-based workflow (`OKFFS_BASE_BRANCH=develop`), merge to `develop` does not auto-close; use `close_issue`.
 - Edge case: if the branch has no commits ahead of the base branch, a friendly comment is posted instead of erroring.
 
 ### Phase 5 — GitHub Projects v2 (optional, later)

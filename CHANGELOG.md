@@ -12,6 +12,7 @@ See [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Changed
 - `OKFFS_UPDATE_DOCS` auto-changelog now fires only on `create_pull_request`. `comment_issue` and `close_issue` no longer trigger doc updates, making `create_pull_request` the single source of changelog entries and eliminating noisy/duplicate entries ([#47](https://github.com/2b9sa2owa/okffs/issues/47)).
 ### Fixed
+- fix: docs reference main for auto-close but workflow merges to develop ([#51](https://github.com/2b9sa2owa/okffs/issues/51)) — Corrects the auto-close documentation and adds a runtime guard. GitHub's `Closes #N` only auto-closes an issue when the PR merges into the repository's default branch; with…
 - bug: OKFFS_AUTO_PR=true leaves CHANGELOG with no auto-update trigger ([#49](https://github.com/2b9sa2owa/okffs/issues/49)) — create_pull_request now reuses an existing open PR for the branch (e.g. a draft opened by create_issue under OKFFS_AUTO_PR=true): it updates the title/body and marks the draft ready for review…
 
 ## [0.1.5] - 2026-06-26
