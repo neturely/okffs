@@ -6,6 +6,9 @@ import {
   getBranchCommits,
   getIssueComments,
   createPullRequest,
+  getOpenPullRequestForBranch,
+  updatePullRequest,
+  markPullRequestReady,
   addIssueComment,
 } from "../github.js";
 import { config } from "../config.js";
@@ -15,7 +18,7 @@ import { git, currentBranch } from "../git.js";
 export const name = "create_pull_request";
 
 export const description =
-  "Create a pull request for the current issue branch. Reads the issue, its comments, and commits to generate a PR title and body. Always includes Closes #N. If OKFFS_UPDATE_DOCS is true, updates CHANGELOG before creating the PR. Posts a summary comment to the issue.";
+  "Create a pull request for the current issue branch. Reads the issue, its comments, and commits to generate a PR title and body. Always includes Closes #N. If OKFFS_UPDATE_DOCS is true, updates CHANGELOG before creating the PR. If a PR already exists for the branch (e.g. a draft opened by create_issue under OKFFS_AUTO_PR=true), it is updated and marked ready for review instead of erroring. Posts a summary comment to the issue.";
 
 export const inputSchema = z.object({
   issue_number: z.number().int().positive().describe("The issue number to create a PR for"),
@@ -158,16 +161,40 @@ export async function handler(input: z.infer<typeof inputSchema>) {
     }
   }
 
-  const pr = await createPullRequest(title, body, branchName, baseBranch);
+  // Under OKFFS_AUTO_PR=true a draft PR already exists for this branch (opened by
+  // create_issue), so creating one would fail. Detect and finalize it instead:
+  // update title/body and mark it ready for review. Otherwise create a new PR.
+  const existing = await getOpenPullRequestForBranch(branchName);
+  let pr: { number: number; html_url: string };
+  let action: string;
+
+  if (existing) {
+    await updatePullRequest(existing.number, { title, body });
+    if (existing.draft) {
+      try {
+        await markPullRequestReady(existing.node_id);
+      } catch (err) {
+        console.warn(
+          `[okffs] Failed to mark PR #${existing.number} ready for review — leaving it as a draft.`,
+          err instanceof Error ? err.message : err
+        );
+      }
+    }
+    pr = { number: existing.number, html_url: existing.html_url };
+    action = existing.draft ? "finalized (marked ready)" : "updated";
+  } else {
+    pr = await createPullRequest(title, body, branchName, baseBranch);
+    action = "created";
+  }
 
   const comment = [
-    `PR opened: ${pr.html_url}`,
+    `PR ${action}: ${pr.html_url}`,
     ``,
     body,
   ].join("\n");
   await addIssueComment(input.issue_number, comment);
 
   return {
-    content: [{ type: "text" as const, text: `PR #${pr.number} created: ${pr.html_url}` }],
+    content: [{ type: "text" as const, text: `PR #${pr.number} ${action}: ${pr.html_url}` }],
   };
 }
