@@ -45,9 +45,10 @@ When `OKFFS_IDENTIFIER` is set, a project-scoped prefix is inserted: `{issue-num
 - TypeScript MCP server scaffolded.
 - PAT auth via `.env` (`GITHUB_TOKEN`, `GITHUB_OWNER`, `GITHUB_REPO`).
 - `.env` is loaded automatically via `dotenv` from `process.cwd()` — no `--env-file` flag needed in `.mcp.json`.
-- Tools: `create_issue`, `list_issues`, `close_issue`, `delete_issue`, `delete_branch`, `get_issue`, `comment_issue`, `link_issues`, `create_issues_from_list`, `create_pull_request`, `commit_and_update`.
+- Tools: `create_issue`, `list_issues`, `close_issue`, `delete_issue`, `delete_branch`, `get_issue`, `comment_issue`, `link_issues`, `create_issues_from_list`, `plan`, `create_pull_request`, `commit_and_update`.
 - `create_issue` auto-creates a branch, embeds the branch name in the issue body, applies default assignees/labels from `.env`, infers labels from title/description and merges with `OKFFS_DEFAULT_LABELS`. Supports optional `assignees`, `labels`, `milestone`. If a relationship is mentioned (blocked by, blocking, parent), automatically calls `link_issues` after creation. If `OKFFS_AUTO_PR=true`, pushes an empty init commit to the branch (capturing and restoring the current branch) and opens a draft PR immediately.
 - `create_issues_from_list` accepts a list of tasks and creates all issues + branches in one shot. Two-step confirmation. Per-task `labels`, `assignees`, and `milestone` supported.
+- `plan` takes a free-text `description` plus the issue breakdown Claude generates from it (titles, descriptions, labels, inter-task relationships referenced by 1-based index) and creates all issues + branches in one shot. Two-step confirmation (preview, then `confirmed: true`). Resolves task-index relationships to real issue numbers and writes them to each issue's `## Relationships` section. If `OKFFS_AUTO_PR=true`, pushes an empty init commit per branch and opens a draft PR for each. Extends the `create_issues_from_list` pattern — Claude is the AI layer that produces the breakdown.
 - `list_issues` returns each issue with its issue URL and inferred branch URL.
 - `get_issue` fetches full issue details — title, body, status, branch, assignees, labels.
 - `comment_issue` posts a comment to an issue. Use after committing to log what was done.
