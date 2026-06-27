@@ -34,6 +34,28 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+async function graphqlRequest<T>(query: string, variables: Record<string, unknown>): Promise<T> {
+  const res = await fetch(`${BASE}/graphql`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ query, variables }),
+  });
+
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`GitHub GraphQL error ${res.status}: ${body}`);
+  }
+
+  const json = (await res.json()) as { data?: T; errors?: unknown };
+  if (json.errors) {
+    throw new Error(`GitHub GraphQL error: ${JSON.stringify(json.errors)}`);
+  }
+  return json.data as T;
+}
+
 export function slugify(title: string): string {
   return title
     .toLowerCase()
@@ -200,6 +222,36 @@ export async function createPullRequest(
     method: "POST",
     body: JSON.stringify({ title, head, base, body }),
   });
+}
+
+// Find the open PR (if any) whose head is the given branch. Used to reuse a
+// draft PR created up front by create_issue under OKFFS_AUTO_PR=true.
+export async function getOpenPullRequestForBranch(
+  branch: string
+): Promise<{ number: number; html_url: string; node_id: string; draft: boolean } | null> {
+  const prs = await request<Array<{ number: number; html_url: string; node_id: string; draft: boolean }>>(
+    `/repos/${owner}/${repo}/pulls?head=${owner}:${branch}&state=open&per_page=1`
+  );
+  return prs.length > 0 ? prs[0] : null;
+}
+
+export async function updatePullRequest(
+  prNumber: number,
+  fields: { title?: string; body?: string }
+): Promise<void> {
+  await request(`/repos/${owner}/${repo}/pulls/${prNumber}`, {
+    method: "PATCH",
+    body: JSON.stringify(fields),
+  });
+}
+
+// Mark a draft PR ready for review. The REST update endpoint cannot change the
+// draft flag, so this uses the GraphQL markPullRequestReadyForReview mutation.
+export async function markPullRequestReady(nodeId: string): Promise<void> {
+  await graphqlRequest(
+    `mutation($id: ID!) { markPullRequestReadyForReview(input: { pullRequestId: $id }) { pullRequest { id } } }`,
+    { id: nodeId }
+  );
 }
 
 export async function createDraftPullRequest(
