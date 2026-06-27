@@ -9,6 +9,7 @@ import {
   getOpenPullRequestForBranch,
   updatePullRequest,
   markPullRequestReady,
+  getRepoDefaultBranch,
   addIssueComment,
 } from "../github.js";
 import { config } from "../config.js";
@@ -40,6 +41,20 @@ export async function handler(input: z.infer<typeof inputSchema>) {
   }
 
   const baseBranch = await getDefaultBranch();
+
+  // `Closes #N` only auto-closes the issue when the PR merges into the repo's
+  // default branch. If OKFFS_BASE_BRANCH targets a non-default branch (e.g.
+  // develop), warn that the issue must be closed manually after merge.
+  let autoCloseNote = "";
+  if (config.baseBranch) {
+    const repoDefault = await getRepoDefaultBranch();
+    if (baseBranch !== repoDefault) {
+      autoCloseNote =
+        `\n\n⚠️ This PR targets \`${baseBranch}\`, not the default branch \`${repoDefault}\` — ` +
+        `merging will **not** auto-close #${input.issue_number}. Close it manually with \`close_issue\` after merge.`;
+    }
+  }
+
   const commits = await getBranchCommits(branchName, baseBranch);
   const comments = await getIssueComments(input.issue_number);
 
@@ -191,10 +206,10 @@ export async function handler(input: z.infer<typeof inputSchema>) {
     `PR ${action}: ${pr.html_url}`,
     ``,
     body,
-  ].join("\n");
+  ].join("\n") + autoCloseNote;
   await addIssueComment(input.issue_number, comment);
 
   return {
-    content: [{ type: "text" as const, text: `PR #${pr.number} ${action}: ${pr.html_url}` }],
+    content: [{ type: "text" as const, text: `PR #${pr.number} ${action}: ${pr.html_url}${autoCloseNote}` }],
   };
 }

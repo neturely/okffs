@@ -104,6 +104,13 @@ export async function getDefaultBranch(): Promise<string> {
   return data.default_branch;
 }
 
+// The repository's actual default branch, ignoring OKFFS_BASE_BRANCH. GitHub's
+// `Closes #N` only auto-closes the issue when a PR merges into this branch.
+export async function getRepoDefaultBranch(): Promise<string> {
+  const data = await request<{ default_branch: string }>(`/repos/${owner}/${repo}`);
+  return data.default_branch;
+}
+
 export async function getRef(ref: string): Promise<{ object: { sha: string } }> {
   return request(`/repos/${owner}/${repo}/git/ref/heads/${ref}`);
 }
