@@ -93,8 +93,66 @@ export async function createBranch(branchName: string, sha: string): Promise<voi
   });
 }
 
-export async function listIssues(): Promise<Array<{ number: number; title: string; html_url: string }>> {
-  return request(`/repos/${owner}/${repo}/issues?state=open&per_page=100`);
+export interface IssueSummary {
+  number: number;
+  title: string;
+  html_url: string;
+  body: string | null;
+}
+
+export async function listIssues(): Promise<IssueSummary[]> {
+  // The issues endpoint also returns pull requests; filter them out via the
+  // pull_request field that only PRs carry.
+  const raw = await request<Array<IssueSummary & { pull_request?: unknown }>>(
+    `/repos/${owner}/${repo}/issues?state=open&per_page=100`
+  );
+  return raw
+    .filter((i) => !i.pull_request)
+    .map(({ number, title, html_url, body }) => ({ number, title, html_url, body }));
+}
+
+export interface PullRequestSummary {
+  number: number;
+  html_url: string;
+  draft: boolean;
+  head: { ref: string };
+}
+
+export async function listOpenPullRequests(): Promise<PullRequestSummary[]> {
+  return request(`/repos/${owner}/${repo}/pulls?state=open&per_page=100`);
+}
+
+export interface IssueRelationships {
+  parent: number[];
+  blockedBy: number[];
+  blocking: number[];
+}
+
+// Parse the "## Relationships" section written by link_issues, e.g.
+//   - Blocked by #3
+//   - Blocking #7
+//   - Parent: #1
+export function parseRelationships(body: string | null): IssueRelationships {
+  const result: IssueRelationships = { parent: [], blockedBy: [], blocking: [] };
+  if (!body) return result;
+
+  const idx = body.indexOf("## Relationships");
+  if (idx === -1) return result;
+
+  let section = body.slice(idx + "## Relationships".length);
+  const nextHeading = section.search(/\n## /);
+  if (nextHeading !== -1) section = section.slice(0, nextHeading);
+
+  for (const line of section.split("\n")) {
+    const m = line.match(/^\s*-\s*(Blocked by|Blocking|Parent:?)\s*#(\d+)/i);
+    if (!m) continue;
+    const num = parseInt(m[2], 10);
+    const label = m[1].toLowerCase();
+    if (label.startsWith("blocked")) result.blockedBy.push(num);
+    else if (label.startsWith("blocking")) result.blocking.push(num);
+    else if (label.startsWith("parent")) result.parent.push(num);
+  }
+  return result;
 }
 
 export async function closeIssue(issueNumber: number): Promise<void> {
