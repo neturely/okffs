@@ -7,6 +7,7 @@ See [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [0.1.5] - 2026-06-26
 ### Added
+- feat: add okffs_plan tool — plan and create issues from context in one shot ([#42](https://github.com/2b9sa2owa/okffs/issues/42)) — Adds a new `plan` tool. It takes a free-text `description` of the work plus the structured issue breakdown Claude generates from it (titles, descriptions, labels, and inter-task relationships referenced by 1-based index), previews the plan, and on `confirmed: true` creates all issues + branches i...
 - New `commit_and_update` tool — stages all changes, builds a commit message from a hint (or the changed file list), commits, pushes to the issue branch, and posts a rich progress comment to the linked issue.
 - `prepublishOnly` hook so `dist/` is always freshly built before publishing.
 - `.github/instructions/okffs.instructions.md` Copilot instructions file.
