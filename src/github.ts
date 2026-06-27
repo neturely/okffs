@@ -44,6 +44,18 @@ export function slugify(title: string): string {
     .join("-");
 }
 
+/**
+ * Build the branch name for an issue.
+ * Format: {issue-number}-{slug}, or {issue-number}-{identifier}-{slug}
+ * when OKFFS_IDENTIFIER is set.
+ */
+export function buildBranchName(issueNumber: number, title: string): string {
+  const slug = slugify(title);
+  return config.identifier
+    ? `${issueNumber}-${config.identifier}-${slug}`
+    : `${issueNumber}-${slug}`;
+}
+
 export async function createIssue(
   title: string,
   body: string,

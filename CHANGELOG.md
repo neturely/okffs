@@ -17,6 +17,7 @@ See [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `CHANGELOG.md` is now shipped in the npm package.
 
 ### Fixed
+- feat: add OKFFS_IDENTIFIER env var for project-scoped branch prefix ([#41](https://github.com/2b9sa2owa/okffs/issues/41)) — Add optional OKFFS_IDENTIFIER env var that inserts a project-scoped prefix into branch names ({number}-{identifier}-{slug}). Added config flag, a centralized buildBranchName() helper in github.ts, updated create_issue / create_issues_from_list / list_issues to use it, and documented the var in .e...
 - `create_pull_request` commits the updated CHANGELOG onto the branch and pushes the branch before opening the PR, with non-blocking error handling ([#38](https://github.com/2b9sa2owa/okffs/issues/38)).
 - All git operations now run via `execFileSync` with argument arrays (no shell), removing command-injection risk from branch names and commit hints; tools also checkout the target branch before committing/pushing and restore the original branch afterward.
 

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { createIssue, updateIssueBody, getDefaultBranch, getRef, createBranch, slugify } from "../github.js";
+import { createIssue, updateIssueBody, getDefaultBranch, getRef, createBranch, buildBranchName } from "../github.js";
 import { config } from "../config.js";
 
 export const name = "create_issues_from_list";
@@ -44,7 +44,7 @@ export async function handler(input: z.infer<typeof inputSchema>) {
     ];
 
     const issue = await createIssue(task.title, task.description, resolvedAssignees, resolvedLabels, task.milestone);
-    const branchName = `${issue.number}-${slugify(task.title)}`;
+    const branchName = buildBranchName(issue.number, task.title);
     await createBranch(branchName, ref.object.sha);
     const updatedBody = `${task.description}\n\n**Branch:** \`${branchName}\``;
     await updateIssueBody(issue.number, updatedBody);

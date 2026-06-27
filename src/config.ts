@@ -7,6 +7,9 @@ export const config = {
     ? process.env.OKFFS_DEFAULT_LABELS.split(",").map((s) => s.trim())
     : [],
   baseBranch: process.env.OKFFS_BASE_BRANCH || null,
+  // OKFFS_IDENTIFIER — optional project-scoped prefix inserted into branch names:
+  // {issue-number}-{identifier}-{slug} instead of {issue-number}-{slug}
+  identifier: process.env.OKFFS_IDENTIFIER || null,
   updateDocs: process.env.OKFFS_UPDATE_DOCS === "true",
   // OKFFS_AUTO_PR=true — creates a draft PR when a new issue branch is created
   autoPR: process.env.OKFFS_AUTO_PR === "true",

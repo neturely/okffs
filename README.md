@@ -102,6 +102,7 @@ No installation needed. Add the `.mcp.json` and `.env` to your project as shown 
    OKFFS_DEFAULT_LABELS=okffs                     # merged with any inferred labels
    OKFFS_PROMPT_METADATA=true                     # set to false to hide the tip
    OKFFS_BASE_BRANCH=main                         # branch to create issues from; defaults to repo default
+   OKFFS_IDENTIFIER=okffs                         # optional prefix: branches become {number}-{identifier}-{slug}
    OKFFS_UPDATE_DOCS=false                        # set to true to auto-update project docs on workflow events
    OKFFS_AUTO_PR=false                            # set to true to open a draft PR when a new issue branch is created
    OKFFS_EXCLUDE_DOCS=CLAUDE.md,CONTRIBUTING.md   # comma-separated — valid options: CLAUDE.md, SECURITY.md, CONTRIBUTING.md, CHANGELOG.md
