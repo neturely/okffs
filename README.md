@@ -131,6 +131,7 @@ No installation needed. Add the `.mcp.json` and `.env` to your project as shown 
 |------|-------------|
 | `create_issue` | Creates a GitHub issue and a matching branch. Infers labels automatically; merges them with `OKFFS_DEFAULT_LABELS`. Supports optional `assignees`, `labels`, and `milestone`. If `OKFFS_AUTO_PR=true`, pushes an empty init commit and opens a draft PR for the branch immediately. |
 | `create_issues_from_list` | Creates multiple issues and branches from a task list in one shot. Confirms before acting. Per-task `labels`, `assignees`, and `milestone` supported. |
+| `plan` | Takes a free-text description of work plus the issue breakdown Claude generates from it (titles, descriptions, labels, inter-task relationships) and creates all issues + branches in one shot. Two-step confirmation. Wires up relationships between the new issues; opens a draft PR per branch when `OKFFS_AUTO_PR=true`. |
 | `list_issues` | Lists all open issues with their issue URL and branch URL. |
 | `get_issue` | Fetches full details of an issue — title, body, labels, assignees, branch, and status. |
 | `comment_issue` | Posts a comment to an issue. Useful for logging work done on a branch. |
