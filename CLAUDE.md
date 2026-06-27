@@ -60,7 +60,7 @@ When `OKFFS_IDENTIFIER` is set, a project-scoped prefix is inserted: `{issue-num
 - Optional `.env` defaults: `OKFFS_DEFAULT_ASSIGNEES`, `OKFFS_DEFAULT_LABELS`, `OKFFS_PROMPT_METADATA`, `OKFFS_BASE_BRANCH`, `OKFFS_IDENTIFIER`, `OKFFS_UPDATE_DOCS`, `OKFFS_AUTO_PR`.
 - `OKFFS_BASE_BRANCH` — branch to create new issue branches from. Defaults to the repo's default branch.
 - `OKFFS_IDENTIFIER` — optional project-scoped prefix inserted into branch names: `{issue-number}-{identifier}-{slug}`. Unset by default.
-- `OKFFS_UPDATE_DOCS` — set to `true` to auto-update local project docs (CHANGELOG.md, CLAUDE.md, SECURITY.md, CONTRIBUTING.md) on workflow events. Default `false`. README.md is intentionally excluded.
+- `OKFFS_UPDATE_DOCS` — set to `true` to auto-update local project docs (CHANGELOG.md, CLAUDE.md, SECURITY.md, CONTRIBUTING.md) when a pull request is created (`create_pull_request`). Default `false`. README.md is intentionally excluded. `comment_issue` and `close_issue` do not trigger doc updates — `create_pull_request` is the single source of auto-changelog entries (avoids duplicate/noisy entries).
 - `OKFFS_AUTO_PR` — set to `true` to open a draft PR when a new issue branch is created (via `create_issue`). Default `false`.
 
 ### Phase 2 — Bulk creation ✓ Complete
