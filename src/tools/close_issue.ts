@@ -1,7 +1,6 @@
 import { z } from "zod";
 import { closeIssue, getIssue, addIssueComment, extractBranchFromBody, owner, repo } from "../github.js";
 import { config } from "../config.js";
-import { updateProjectDocs } from "../docs.js";
 
 export const name = "close_issue";
 
@@ -26,23 +25,9 @@ export async function handler(input: z.infer<typeof inputSchema>) {
     await addIssueComment(input.issue_number, comment);
   }
 
-  // In the auto-PR flow, create_pull_request already updates and commits the
-  // CHANGELOG for this issue — skip here to avoid duplicate entries.
-  if (config.updateDocs && !config.autoPR) {
-    await updateProjectDocs({
-      trigger: "close_issue",
-      issueNumber: input.issue_number,
-      issueTitle: issue.title,
-      summary: issue.body
-        ? issue.body
-            .replace(/\*\*Branch:\*\*\s*`[^`]+`/g, "")
-            .replace(/## Relationships[\s\S]*/g, "")
-            .trim()
-            .slice(0, 200)
-        : issue.title,
-      branchName: branchName ?? undefined,
-    });
-  }
+  // Closing no longer triggers a CHANGELOG update. create_pull_request is the
+  // single source of auto-changelog entries — firing here too produced
+  // duplicates (the PR already logged the change).
 
   return {
     content: [{ type: "text" as const, text: `Issue #${input.issue_number} closed.\n\n💡 Tip: run /clear to reset Claude Code context and save tokens before starting the next issue.` }],

@@ -9,6 +9,9 @@ See [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - New `plan` tool — takes a free-text description plus the issue breakdown Claude generates from it (titles, descriptions, labels, inter-task relationships), previews the plan, and creates all issues + branches in one shot. Resolves relationships to issue numbers and opens a draft PR per branch when `OKFFS_AUTO_PR=true` ([#42](https://github.com/2b9sa2owa/okffs/issues/42)).
 - `OKFFS_IDENTIFIER` env var — when set, branch names use `{issue-number}-{identifier}-{slug}` instead of `{issue-number}-{slug}` ([#41](https://github.com/2b9sa2owa/okffs/issues/41)).
 
+### Changed
+- `OKFFS_UPDATE_DOCS` auto-changelog now fires only on `create_pull_request`. `comment_issue` and `close_issue` no longer trigger doc updates, making `create_pull_request` the single source of changelog entries and eliminating noisy/duplicate entries ([#47](https://github.com/2b9sa2owa/okffs/issues/47)).
+
 ## [0.1.5] - 2026-06-26
 ### Added
 - New `commit_and_update` tool — stages all changes, builds a commit message from a hint (or the changed file list), commits, pushes to the issue branch, and posts a rich progress comment to the linked issue.
