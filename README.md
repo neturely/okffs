@@ -184,7 +184,7 @@ Review threads are only auto-resolved when `OKFFS_RESOLVE_THREADS=true`; by defa
 
 ## Keeping CLAUDE.md in sync
 
-The **`/okffs:update_guidance`** slash command (optionally takes an issue number) reviews the changes on the current branch and makes minimal, substantive edits to `CLAUDE.md` when functionality, config, or conventions changed — e.g. adding a new tool to the tools list or documenting a new env var. It's *intelligent* guidance maintenance, not a changelog append (that's `CHANGELOG.md`'s job), and it does nothing when nothing substantive changed.
+The **`/okffs:update_guidance`** slash command (optionally takes an issue number) reviews the changes on the current branch and maintains a single okffs-owned section of `CLAUDE.md` — `## Project Guidance (okffs usage)`, delimited by `<!-- okffs:guidance:start -->` / `<!-- okffs:guidance:end -->` markers (created once if absent). It curates **only that region** (tools, env vars, prompts, conventions) and **never touches your hand-written content** elsewhere. It's *intelligent* guidance maintenance, not a changelog append (that's `CHANGELOG.md`'s job), and it does nothing when nothing substantive changed.
 
 Set `OKFFS_UPDATE_GUIDANCE=true` to have `create_pull_request` nudge the agent to run it at PR time so the CLAUDE.md update lands in the same PR. The slash command is available either way.
 
