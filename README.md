@@ -181,17 +181,18 @@ Review threads are only auto-resolved when `OKFFS_RESOLVE_THREADS=true`; by defa
 
 When `OKFFS_UPDATE_DOCS=true` in your `.env`, okffs automatically updates local project docs when a pull request is created (`create_pull_request`). Changes are written to local files — committing is your responsibility. Commenting on or closing an issue does **not** trigger doc updates, to keep the CHANGELOG free of noise and duplicate entries.
 
-Files updated when relevant:
-- `CHANGELOG.md` — always updated, created if missing. Entries follow [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) format, added under `## [Unreleased]`. `create_pull_request` updates it before opening the PR and commits it onto the branch so it's included in the diff. This is the single source of auto-changelog entries.
-- `CLAUDE.md` — updated when convention, workflow, tool, config, or architecture keywords are detected.
-- `SECURITY.md` — updated when security, vulnerability, or CVE keywords are detected.
-- `CONTRIBUTING.md` — updated when convention, contributing, or workflow keywords are detected.
+Entries are **title-based one-liners** — concise and complete, so nothing needs manual cleanup.
 
-Use `OKFFS_EXCLUDE_DOCS` to exclude specific files per repo:
+Files updated when relevant:
+- `CHANGELOG.md` — always updated, created if missing. Entries follow [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) format, added under `## [Unreleased]`. `create_pull_request` updates it before opening the PR and commits it onto the branch so it's included in the diff.
+- `SECURITY.md` — updated when security, vulnerability, or CVE keywords are detected (only if the file exists).
+
+`CLAUDE.md` and `CONTRIBUTING.md` are **not** auto-updated — they previously received truncated, changelog-style appends that duplicated `CHANGELOG.md` and needed manual cleanup. `README.md` is also intentionally excluded — maintain it manually.
+
+Use `OKFFS_EXCLUDE_DOCS` to exclude specific files per repo (valid options: `CHANGELOG.md`, `SECURITY.md`):
 ```env
-OKFFS_EXCLUDE_DOCS=CLAUDE.md,CONTRIBUTING.md
+OKFFS_EXCLUDE_DOCS=SECURITY.md
 ```
-README.md is intentionally excluded from auto-updates — maintain it manually.
 
 ## Conventions
 

@@ -3,8 +3,11 @@ import path from "path";
 import { config } from "./config.js";
 import { owner, repo } from "./github.js";
 
-// Scoped to: CLAUDE.md, CHANGELOG.md, SECURITY.md, CONTRIBUTING.md
-// CHANGELOG.md is created if missing. Others are only updated if they exist.
+// Scoped to: CHANGELOG.md (always) and SECURITY.md (security-related changes only).
+// Entries are title-based one-liners — concise and complete, so nothing needs
+// manual curation. CHANGELOG.md is created if missing; SECURITY.md is only
+// updated if it exists. CLAUDE.md and CONTRIBUTING.md are intentionally not
+// auto-updated (they previously got noisy, truncated changelog-style appends).
 // Files are written locally to process.cwd(). Committing is the user's responsibility.
 // Failures warn only — never throw.
 
@@ -46,18 +49,16 @@ function truncateAtWord(text: string, max: number): string {
 
 function buildChangelogEntry(ctx: DocsContext): string {
   const ref = ctx.issueNumber ? ` ([#${ctx.issueNumber}](https://github.com/${owner}/${repo}/issues/${ctx.issueNumber}))` : "";
-  const title = ctx.issueTitle ?? ctx.trigger;
-
-  const cleanSummary = ctx.summary
-    .replace(/\*\*Branch:\*\*\s*`[^`]+`/g, "")
-    .replace(/## Relationships[\s\S]*/g, "")
-    .replace(/^(Closed:|Fixed:|Added:|Changed:)\s*/i, "")
-    .replace(/\s+/g, " ") // collapse newlines/runs of whitespace into a single line
-    .trim();
-
-  const truncated = truncateAtWord(cleanSummary, 200);
-  const summaryPart = truncated && truncated !== title ? ` — ${truncated}` : "";
-  return `- ${title}${ref}${summaryPart}`;
+  // Title-based entry: titles are already concise and complete, so the entry is
+  // readable with nothing to curate. We deliberately do NOT append a truncated
+  // excerpt of the (often long) summary — that produced incomplete-looking,
+  // ellipsis-ended entries that needed manual cleanup on every PR. truncateAtWord
+  // remains only as a safety net for an unusually long title.
+  // Prefer the issue title; fall back to the summary (non-issue triggers like
+  // delete_branch pass a meaningful summary but no title) before the bare trigger.
+  const source = ctx.issueTitle || ctx.summary || ctx.trigger;
+  const title = truncateAtWord(source.replace(/\s+/g, " ").trim(), 120);
+  return `- ${title}${ref}`;
 }
 
 // Insert a changelog entry under the ## [Unreleased] section, scoping the search
@@ -108,23 +109,6 @@ function shouldUpdateSecurity(ctx: DocsContext): boolean {
   return /security|vulnerability|cve/i.test(lower);
 }
 
-function shouldUpdateContributing(ctx: DocsContext): boolean {
-  const lower = (ctx.issueTitle ?? "") + ctx.summary;
-  return /convention|contributing|workflow/i.test(lower);
-}
-
-function shouldUpdateClaude(ctx: DocsContext): boolean {
-  const lower = (ctx.issueTitle ?? "") + ctx.summary;
-  return /convention|workflow|tool|config|setup|architecture/i.test(lower);
-}
-
-function appendToSection(content: string, heading: string, entry: string): string {
-  if (content.includes(heading)) {
-    return content.replace(heading, heading + entry);
-  }
-  return content.trimEnd() + "\n\n" + heading + entry;
-}
-
 function readFile(filePath: string): string | null {
   try {
     return fs.existsSync(filePath) ? fs.readFileSync(filePath, "utf8") : null;
@@ -156,43 +140,22 @@ function determineUpdates(ctx: DocsContext, base: string): FileUpdate[] {
     }
   }
 
-  // CLAUDE.md — only for convention/workflow/tool/config changes
-  if (shouldUpdateClaude(ctx) && !isExcluded("CLAUDE.md")) {
-    const claudePath = path.join(base, "CLAUDE.md");
-    const claude = readFile(claudePath);
-    if (claude !== null) {
-      const line = `\n- ${isoDate()}${ctx.issueNumber ? ` ([#${ctx.issueNumber}](https://github.com/${owner}/${repo}/issues/${ctx.issueNumber}))` : ""}: ${truncateAtWord(ctx.summary.replace(/\s+/g, " ").trim(), 200)}`;
-      updates.push({
-        path: claudePath,
-        content: appendToSection(claude, "## Recent Changes", line),
-        created: false,
-      });
-    }
-  }
-
-  // SECURITY.md — only for security-related triggers
+  // SECURITY.md — only for security-related triggers. Title-based one-liner.
   if (shouldUpdateSecurity(ctx) && !isExcluded("SECURITY.md")) {
     const secPath = path.join(base, "SECURITY.md");
     const sec = readFile(secPath);
     if (sec !== null) {
-      const line = `\n- ${isoDate()}${ctx.issueNumber ? ` (#${ctx.issueNumber})` : ""}: ${ctx.summary}`;
+      const source = ctx.issueTitle || ctx.summary || ctx.trigger;
+      const title = truncateAtWord(source.replace(/\s+/g, " ").trim(), 120);
+      const line = `\n- ${isoDate()}${ctx.issueNumber ? ` (#${ctx.issueNumber})` : ""}: ${title}`;
       updates.push({ path: secPath, content: sec.trimEnd() + line, created: false });
     }
   }
 
-  // CONTRIBUTING.md — only when conventions changed
-  if (shouldUpdateContributing(ctx) && !isExcluded("CONTRIBUTING.md")) {
-    const contribPath = path.join(base, "CONTRIBUTING.md");
-    const contrib = readFile(contribPath);
-    if (contrib !== null) {
-      const line = `\n- ${isoDate()}: ${ctx.summary}`;
-      updates.push({
-        path: contribPath,
-        content: appendToSection(contrib, "## Changelog", line),
-        created: false,
-      });
-    }
-  }
+  // Note: CLAUDE.md and CONTRIBUTING.md are intentionally NOT auto-updated.
+  // They previously got truncated "## Recent Changes"/"## Changelog" appends
+  // that duplicated the CHANGELOG and required manual cleanup every PR. The
+  // CHANGELOG is the single auto-doc target now (plus SECURITY.md when relevant).
 
   return updates;
 }
