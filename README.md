@@ -38,10 +38,23 @@ Add okffs to any project by creating a `.mcp.json` in the project root:
 }
 ```
 
-Create a `.env` file in the same directory with your GitHub credentials:
+### Authentication & repository
+
+okffs needs a GitHub token and a target repository. It resolves both with sensible fallbacks, so most users need little or no config:
+
+**Token** (in order of preference):
+1. `GITHUB_TOKEN` in a `.env` file. Create a token with one click: [github.com/settings/tokens/new?scopes=repo&description=okffs](https://github.com/settings/tokens/new?scopes=repo&description=okffs).
+2. If `GITHUB_TOKEN` is unset, okffs falls back to the **GitHub CLI** — if you've run `gh auth login`, it just works with no token setup.
+
+**Repository** (in order of preference):
+1. `GITHUB_OWNER` / `GITHUB_REPO` in `.env`.
+2. If unset, okffs **auto-detects** them from the `origin` git remote of the directory it runs in.
+
+So the minimal setup is often just the `.mcp.json` above — if you're signed in with `gh` and run okffs inside the repo you want to manage, no `.env` is needed at all. To configure explicitly, create a `.env` in the same directory:
 
 ```env
 GITHUB_TOKEN=ghp_your_personal_access_token_here
+# Optional — auto-detected from the git `origin` remote when omitted:
 GITHUB_OWNER=your-github-username
 GITHUB_REPO=your-repo-name
 ```
@@ -88,12 +101,12 @@ No installation needed. Add the `.mcp.json` and `.env` to your project as shown 
    cp .env.example .env
    ```
 
-   Required vars:
+   Auth & repo (all optional if you use the `gh` CLI and run inside the target repo — see [Authentication & repository](#authentication--repository)):
 
    ```env
-   GITHUB_TOKEN=ghp_your_personal_access_token_here
-   GITHUB_OWNER=your-github-username
-   GITHUB_REPO=your-repo-name
+   GITHUB_TOKEN=ghp_your_personal_access_token_here   # or sign in with `gh auth login`
+   GITHUB_OWNER=your-github-username                  # auto-detected from git origin if omitted
+   GITHUB_REPO=your-repo-name                         # auto-detected from git origin if omitted
    ```
 
 3. Optionally set defaults applied to every new issue:

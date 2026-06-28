@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { config } from "./config.js";
+import { owner, repo } from "./github.js";
 
 // Scoped to: CLAUDE.md, CHANGELOG.md, SECURITY.md, CONTRIBUTING.md
 // CHANGELOG.md is created if missing. Others are only updated if they exist.
@@ -44,7 +45,7 @@ function truncateAtWord(text: string, max: number): string {
 }
 
 function buildChangelogEntry(ctx: DocsContext): string {
-  const ref = ctx.issueNumber ? ` ([#${ctx.issueNumber}](https://github.com/${process.env.GITHUB_OWNER}/${process.env.GITHUB_REPO}/issues/${ctx.issueNumber}))` : "";
+  const ref = ctx.issueNumber ? ` ([#${ctx.issueNumber}](https://github.com/${owner}/${repo}/issues/${ctx.issueNumber}))` : "";
   const title = ctx.issueTitle ?? ctx.trigger;
 
   const cleanSummary = ctx.summary
@@ -160,7 +161,7 @@ function determineUpdates(ctx: DocsContext, base: string): FileUpdate[] {
     const claudePath = path.join(base, "CLAUDE.md");
     const claude = readFile(claudePath);
     if (claude !== null) {
-      const line = `\n- ${isoDate()}${ctx.issueNumber ? ` ([#${ctx.issueNumber}](https://github.com/${process.env.GITHUB_OWNER}/${process.env.GITHUB_REPO}/issues/${ctx.issueNumber}))` : ""}: ${ctx.summary.slice(0, 200)}`;
+      const line = `\n- ${isoDate()}${ctx.issueNumber ? ` ([#${ctx.issueNumber}](https://github.com/${owner}/${repo}/issues/${ctx.issueNumber}))` : ""}: ${ctx.summary.slice(0, 200)}`;
       updates.push({
         path: claudePath,
         content: appendToSection(claude, "## Recent Changes", line),
