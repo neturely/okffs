@@ -126,6 +126,7 @@ No installation needed. Add the `.mcp.json` and `.env` to your project as shown 
    OKFFS_UPDATE_DOCS=false                        # set to true to auto-update project docs on workflow events
    OKFFS_AUTO_PR=false                            # set to true to open a draft PR when a new issue branch is created
    OKFFS_RESOLVE_THREADS=false                    # set to true to let okffs auto-resolve PR review threads after they're addressed
+   OKFFS_UPDATE_GUIDANCE=false                    # set to true to nudge keeping CLAUDE.md in sync with functionality changes at PR time
    OKFFS_EXCLUDE_DOCS=SECURITY.md                 # comma-separated — valid options: CHANGELOG.md, SECURITY.md
    ```
 
@@ -180,6 +181,12 @@ Claude reads the review threads (`list_pr_review_comments`), fixes the valid one
 There's also a ready-made prompt exposed as a slash command — **`/okffs:address_pr_review`** (takes a PR number) — that runs the same loop.
 
 Review threads are only auto-resolved when `OKFFS_RESOLVE_THREADS=true`; by default they're left open for you to read and resolve yourself.
+
+## Keeping CLAUDE.md in sync
+
+The **`/okffs:update_guidance`** slash command (optionally takes an issue number) reviews the changes on the current branch and makes minimal, substantive edits to `CLAUDE.md` when functionality, config, or conventions changed — e.g. adding a new tool to the tools list or documenting a new env var. It's *intelligent* guidance maintenance, not a changelog append (that's `CHANGELOG.md`'s job), and it does nothing when nothing substantive changed.
+
+Set `OKFFS_UPDATE_GUIDANCE=true` to have `create_pull_request` nudge the agent to run it at PR time so the CLAUDE.md update lands in the same PR. The slash command is available either way.
 
 ## Automatic doc updates
 
