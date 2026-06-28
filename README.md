@@ -164,6 +164,7 @@ No installation needed. Add the `.mcp.json` and `.env` to your project as shown 
 | `list_pr_review_comments` | Fetches a PR's review feedback: inline comment threads (with comment ids, file/line, author, body, resolved state) and review summaries. |
 | `reply_to_review_comment` | Replies to an inline PR review comment thread by id. |
 | `resolve_review_thread` | Marks a PR review thread resolved. Gated by `OKFFS_RESOLVE_THREADS` — declines unless that's enabled, leaving threads for you to resolve. |
+| `prepare_release` | Bumps the version (`package.json` + `package-lock.json`), rolls the CHANGELOG (`[Unreleased]` → a dated version section), commits on a release branch, and opens a PR. Two-step confirm; takes an explicit `version` or `bump` level (inferred if omitted). Does **not** tag or publish. |
 | `delete_issue` | Closes an issue **and** deletes its matching branch. Destructive — requires `confirmed: true`. |
 | `delete_branch` | Deletes a branch **and** closes its matching issue. Destructive — requires `confirmed: true`. |
 
@@ -228,16 +229,17 @@ OKFFS_EXCLUDE_DOCS=SECURITY.md
 
 Requires an npm account with maintainer access to the `okffs` package.
 
-1. Bump the version in `package.json` following [semver](https://semver.org/)
-2. Commit and merge to `main`
-3. Tag and push:
+1. **Prepare the release** with the `prepare_release` tool (ask Claude, e.g. *"prepare a release"* or *"prepare release 0.2.0"*). It bumps `package.json` + `package-lock.json`, rolls the CHANGELOG, and opens a release PR. Review and merge it (then merge to `main`).
+2. **Tag and push** the version:
 
    ```bash
-   git tag v0.1.4
-   git push origin v0.1.4
+   git tag v0.2.0
+   git push origin v0.2.0
    ```
 
-The GitHub Actions workflow publishes to npm automatically on semver tags (`v*.*.*`). The `NPM_TOKEN` secret must be set in the repository settings.
+The GitHub Actions workflow publishes to npm automatically on semver tags (`v*.*.*`) — so **do not run `npm publish` manually** (it would collide with CI). The `NPM_TOKEN` secret must be set in the repository settings.
+
+> `prepare_release` deliberately stops before tagging/publishing, keeping the irreversible step (the tag that triggers CI publish) a manual decision. You can still bump by hand if you prefer.
 
 ## Codebase search
 

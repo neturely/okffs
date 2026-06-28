@@ -61,6 +61,52 @@ function buildChangelogEntry(ctx: DocsContext): string {
   return `- ${title}${ref}`;
 }
 
+// Return the body of the ## [Unreleased] section (everything between that
+// heading and the next "## [" version heading), or null if there's no marker.
+export function getUnreleasedSection(changelog: string): string | null {
+  const marker = "## [Unreleased]";
+  const idx = changelog.indexOf(marker);
+  if (idx === -1) return null;
+  const after = idx + marker.length;
+  const nextRel = changelog.slice(after).search(/\n## \[/);
+  return (nextRel === -1 ? changelog.slice(after) : changelog.slice(after, after + nextRel)).trim();
+}
+
+// Roll the CHANGELOG for a release: move the [Unreleased] entries under a new
+// "## [version] - date" heading, leave a fresh empty [Unreleased], and update
+// the compare links at the bottom. Returns the new changelog text.
+export function rollChangelogForRelease(
+  changelog: string,
+  version: string,
+  prevVersion: string,
+  date: string
+): string {
+  const marker = "## [Unreleased]";
+  const idx = changelog.indexOf(marker);
+  if (idx === -1) throw new Error("CHANGELOG.md has no ## [Unreleased] section.");
+
+  const after = idx + marker.length;
+  const nextRel = changelog.slice(after).search(/\n## \[/);
+  const bodyEnd = nextRel === -1 ? changelog.length : after + nextRel;
+  const body = changelog.slice(after, bodyEnd).replace(/\s+$/, ""); // entries, trimmed
+  const head = changelog.slice(0, after); // up to & including "## [Unreleased]"
+  const tail = changelog.slice(bodyEnd); // "\n## [prev]…" onward (incl. links)
+
+  let result = `${head}\n\n## [${version}] - ${date}${body}\n${tail}`;
+
+  // Update the link refs at the bottom.
+  const repoUrl = `https://github.com/${owner}/${repo}`;
+  result = result.replace(
+    /\[Unreleased\]:\s*\S+/,
+    `[Unreleased]: ${repoUrl}/compare/v${version}...HEAD`
+  );
+  result = result.replace(
+    /(\[Unreleased\]:[^\n]*\n)/,
+    `$1[${version}]: ${repoUrl}/compare/v${prevVersion}...v${version}\n`
+  );
+  return result;
+}
+
 // Insert a changelog entry under the ## [Unreleased] section, scoping the search
 // for the type heading (### Added, ### Fixed, …) to that section only. Without
 // scoping, an existing "### Added" under the latest *released* version would
