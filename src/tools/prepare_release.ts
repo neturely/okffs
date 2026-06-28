@@ -106,6 +106,17 @@ export async function handler(input: z.infer<typeof inputSchema>) {
     const lockRaw = fs.readFileSync(lockPath, "utf8");
     const clRaw = fs.readFileSync(clPath, "utf8");
     const fromVersion: string = JSON.parse(pkgRaw).version;
+
+    // The preview computed targetVersion from the working tree's version. If the
+    // base branch is actually at a different version and no explicit version was
+    // given, the inferred target would be wrong — abort rather than bump blindly.
+    if (!input.version && fromVersion !== currentVersion) {
+      throw new Error(
+        `Base branch ${baseBranch} is at version ${fromVersion}, but the preview was based on ${currentVersion}. ` +
+        `Re-run with an explicit \`version\` to proceed.`
+      );
+    }
+
     const date = new Date().toISOString().slice(0, 10);
 
     // Compute all new contents up front (with validation) so a failure can't
