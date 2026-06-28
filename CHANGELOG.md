@@ -4,8 +4,9 @@ All notable changes to this project will be documented in this file.
 See [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
-### Changed
-- feat: reduce auth/setup friction for end users (tiered, low-complexity first) ([#56](https://github.com/2b9sa2owa/okffs/issues/56)) — Implements Tier 1 + Tier 2 of the auth/setup friction reduction. Token now resolves from GITHUB_TOKEN or falls back to the GitHub CLI (`gh auth token`); owner/repo resolve from…
+### Added
+- PR review-response workflow: new `list_pr_review_comments`, `reply_to_review_comment`, and `resolve_review_thread` tools, plus an `address_pr_review` MCP prompt (slash command) that reads a PR's review comments, fixes them, replies per thread, and posts a summary. Thread resolution is gated by the new `OKFFS_RESOLVE_THREADS` env var (default off) ([#58](https://github.com/2b9sa2owa/okffs/issues/58)).
+- Reduced auth/setup friction: token resolves from `GITHUB_TOKEN` or falls back to `gh auth token`, and owner/repo auto-detect from the `origin` git remote when env vars are unset ([#56](https://github.com/2b9sa2owa/okffs/issues/56)).
 
 ## [0.1.6] - 2026-06-27
 ### Added

@@ -13,6 +13,9 @@ export const config = {
   updateDocs: process.env.OKFFS_UPDATE_DOCS === "true",
   // OKFFS_AUTO_PR=true — creates a draft PR when a new issue branch is created
   autoPR: process.env.OKFFS_AUTO_PR === "true",
+  // OKFFS_RESOLVE_THREADS=true — auto-resolve PR review threads after they are
+  // addressed. Default false: threads are left open for the user to resolve.
+  resolveThreads: process.env.OKFFS_RESOLVE_THREADS === "true",
   excludeDocs: process.env.OKFFS_EXCLUDE_DOCS
     ? process.env.OKFFS_EXCLUDE_DOCS.split(",").map((s) => s.trim())
     : [],

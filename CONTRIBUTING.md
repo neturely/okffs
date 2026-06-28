@@ -74,3 +74,6 @@ Use conventional commits:
 ## Publishing
 
 Maintainer only. Bump `package.json` version, merge to `main`, tag with `vX.Y.Z` — GitHub Actions handles the npm publish automatically.
+
+## Changelog
+- 2026-06-28: Adds an out-of-the-box PR review-response workflow. New tools: list_pr_review_comments (fetch inline threads + review summaries via GraphQL, with comment ids, file/line, author, body, resolved state, and thread ids), reply_to_review_comment (reply to a thread by id), and resolve_review_thread (resolve via GraphQL, gated by the new OKFFS_RESOLVE_THREADS env var — declines unless enabled so threads are left for the user by default). Adds an MCP prompt address_pr_review (surfaced as a slash command) that orchestrates read → triage/fix → commit_and_update → reply per thread → comment_issue summary → optional resolve, and wires up the MCP prompts capability in index.ts. Top-level PR summary comments reuse comment_issue (PRs are issues). Documented in README (tools table + new "Responding to PR reviews" section), .env.example, and CLAUDE.md. Verified live against PR #57 (threads, ids, replies parsed correctly), the resolve guard, and the prompt builder.

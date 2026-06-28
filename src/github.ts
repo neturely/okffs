@@ -340,3 +340,114 @@ export function extractBranchFromBody(body: string | null): string | null {
   const match = body.match(/\*\*Branch:\*\*\s+`([^`]+)`/);
   return match ? match[1] : null;
 }
+
+// ── PR review feedback ──────────────────────────────────────────────────────
+
+export interface ReviewComment {
+  id: number; // REST databaseId — used as in_reply_to when replying
+  path: string | null;
+  line: number | null;
+  author: string;
+  body: string;
+}
+
+export interface ReviewThread {
+  id: string; // GraphQL node id — used to resolve the thread
+  isResolved: boolean;
+  comments: ReviewComment[];
+}
+
+export interface ReviewSummary {
+  author: string;
+  state: string;
+  body: string;
+}
+
+export interface PullRequestReview {
+  threads: ReviewThread[];
+  reviews: ReviewSummary[];
+}
+
+// Fetch inline review threads (with resolved state + thread ids) and overall
+// review summaries for a PR. Uses GraphQL so we get thread ids and resolved
+// state, which the REST comments endpoint does not expose.
+export async function getPullRequestReview(prNumber: number): Promise<PullRequestReview> {
+  const data = await graphqlRequest<{
+    repository: {
+      pullRequest: {
+        reviewThreads: {
+          nodes: Array<{
+            id: string;
+            isResolved: boolean;
+            comments: {
+              nodes: Array<{
+                databaseId: number;
+                path: string | null;
+                line: number | null;
+                originalLine: number | null;
+                body: string;
+                author: { login: string } | null;
+              }>;
+            };
+          }>;
+        };
+        reviews: {
+          nodes: Array<{ state: string; body: string; author: { login: string } | null }>;
+        };
+      } | null;
+    };
+  }>(
+    `query($owner:String!,$repo:String!,$pr:Int!){
+      repository(owner:$owner,name:$repo){
+        pullRequest(number:$pr){
+          reviewThreads(first:100){ nodes{ id isResolved comments(first:50){ nodes{ databaseId path line originalLine body author{login} } } } }
+          reviews(first:50){ nodes{ state body author{login} } }
+        }
+      }
+    }`,
+    { owner, repo, pr: prNumber }
+  );
+
+  const pr = data.repository.pullRequest;
+  if (!pr) {
+    // GitHub GraphQL returns pullRequest: null (no errors array) for an
+    // unknown PR number — surface a clear message instead of a null deref.
+    throw new Error(`Pull request #${prNumber} not found in ${owner}/${repo}.`);
+  }
+  const threads: ReviewThread[] = pr.reviewThreads.nodes.map((t) => ({
+    id: t.id,
+    isResolved: t.isResolved,
+    comments: t.comments.nodes.map((c) => ({
+      id: c.databaseId,
+      path: c.path,
+      line: c.line ?? c.originalLine,
+      author: c.author?.login ?? "unknown",
+      body: c.body,
+    })),
+  }));
+  const reviews: ReviewSummary[] = pr.reviews.nodes
+    .filter((r) => r.body && r.body.trim())
+    .map((r) => ({ author: r.author?.login ?? "unknown", state: r.state, body: r.body }));
+
+  return { threads, reviews };
+}
+
+// Reply to an inline review comment thread (REST in_reply_to).
+export async function replyToReviewComment(
+  prNumber: number,
+  commentId: number,
+  body: string
+): Promise<{ id: number; html_url: string }> {
+  return request(`/repos/${owner}/${repo}/pulls/${prNumber}/comments`, {
+    method: "POST",
+    body: JSON.stringify({ body, in_reply_to: commentId }),
+  });
+}
+
+// Mark a review thread resolved (GraphQL — no REST equivalent).
+export async function resolveReviewThread(threadId: string): Promise<void> {
+  await graphqlRequest(
+    `mutation($id:ID!){ resolveReviewThread(input:{threadId:$id}){ thread{ id isResolved } } }`,
+    { id: threadId }
+  );
+}

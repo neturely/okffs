@@ -6,6 +6,8 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
+  ListPromptsRequestSchema,
+  GetPromptRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import { zodToJsonSchema } from "zod-to-json-schema";
 
@@ -21,12 +23,19 @@ import * as plan from "./tools/plan.js";
 import * as linkIssues from "./tools/link_issues.js";
 import * as createPullRequest from "./tools/create_pull_request.js";
 import * as commitAndUpdate from "./tools/commit_and_update.js";
+import * as listPrReviewComments from "./tools/list_pr_review_comments.js";
+import * as replyToReviewComment from "./tools/reply_to_review_comment.js";
+import * as resolveReviewThread from "./tools/resolve_review_thread.js";
 
-const tools = [createIssue, listIssues, closeIssue, deleteIssue, deleteBranch, getIssue, commentIssue, createIssuesFromList, plan, linkIssues, createPullRequest, commitAndUpdate];
+import * as addressPrReview from "./prompts/address_pr_review.js";
+
+const tools = [createIssue, listIssues, closeIssue, deleteIssue, deleteBranch, getIssue, commentIssue, createIssuesFromList, plan, linkIssues, createPullRequest, commitAndUpdate, listPrReviewComments, replyToReviewComment, resolveReviewThread];
+
+const prompts = [addressPrReview];
 
 const server = new Server(
   { name: "okffs", version: "0.0.1" },
-  { capabilities: { tools: {} } }
+  { capabilities: { tools: {}, prompts: {} } }
 );
 
 server.setRequestHandler(ListToolsRequestSchema, async () => ({
@@ -44,6 +53,22 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
   }
   const input = tool.inputSchema.parse(req.params.arguments);
   return tool.handler(input as never);
+});
+
+server.setRequestHandler(ListPromptsRequestSchema, async () => ({
+  prompts: prompts.map((p) => ({
+    name: p.name,
+    description: p.description,
+    arguments: p.argumentDefs,
+  })),
+}));
+
+server.setRequestHandler(GetPromptRequestSchema, async (req) => {
+  const prompt = prompts.find((p) => p.name === req.params.name);
+  if (!prompt) {
+    throw new Error(`Unknown prompt: ${req.params.name}`);
+  }
+  return prompt.build(req.params.arguments ?? {});
 });
 
 const transport = new StdioServerTransport();
