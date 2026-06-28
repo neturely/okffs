@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import "dotenv/config";
+import { readFileSync } from "node:fs";
 
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
@@ -35,8 +36,14 @@ const tools = [createIssue, listIssues, closeIssue, deleteIssue, deleteBranch, g
 
 const prompts = [addressPrReview, updateGuidance];
 
+// Read the package version so the server reports the real version (dist/index.js
+// lives one level below package.json in both dev and the published package).
+const version = JSON.parse(
+  readFileSync(new URL("../package.json", import.meta.url), "utf8")
+).version;
+
 const server = new Server(
-  { name: "okffs", version: "0.0.1" },
+  { name: "okffs", version },
   { capabilities: { tools: {}, prompts: {} } }
 );
 

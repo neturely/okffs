@@ -7,6 +7,7 @@ See [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [0.2.0] - 2026-06-28
 ### Fixed
+- The MCP server now reports the real package version instead of a hard-coded `0.0.1`.
 - Auto-doc entries are now concise title-based one-liners instead of truncated summary dumps; CLAUDE.md and CONTRIBUTING.md are no longer auto-updated (CHANGELOG.md, plus SECURITY.md when relevant, are the only auto-doc targets) ([#60](https://github.com/2b9sa2owa/okffs/issues/60)).
 - Corrected the stale `OKFFS_EXCLUDE_DOCS` example in the README (valid options are `CHANGELOG.md`, `SECURITY.md`) ([#62](https://github.com/2b9sa2owa/okffs/issues/62)).
 
