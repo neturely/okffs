@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 See [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+### Changed
+- feat: reduce auth/setup friction for end users (tiered, low-complexity first) ([#56](https://github.com/2b9sa2owa/okffs/issues/56)) — Implements Tier 1 + Tier 2 of the auth/setup friction reduction. Token now resolves from GITHUB_TOKEN or falls back to the GitHub CLI (`gh auth token`); owner/repo resolve from…
 
 ## [0.1.6] - 2026-06-27
 ### Added

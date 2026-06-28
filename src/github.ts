@@ -1,13 +1,73 @@
+import { execFileSync } from "node:child_process";
 import { config } from "./config.js";
 
 const BASE = "https://api.github.com";
 
-const token = process.env.GITHUB_TOKEN;
-export const owner = process.env.GITHUB_OWNER;
-export const repo = process.env.GITHUB_REPO;
+const PAT_LINK =
+  "https://github.com/settings/tokens/new?scopes=repo&description=okffs";
 
-if (!token || !owner || !repo) {
-  throw new Error("GITHUB_TOKEN, GITHUB_OWNER, and GITHUB_REPO must be set");
+/** Run a command and return trimmed stdout, or null on any failure. */
+function tryExec(cmd: string, args: string[]): string | null {
+  try {
+    const out = execFileSync(cmd, args, {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+    return out || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Resolve a GitHub token. Prefers GITHUB_TOKEN, then falls back to the GitHub
+ * CLI (`gh auth token`) so users already signed in with `gh` need no setup.
+ */
+function resolveToken(): string | null {
+  return process.env.GITHUB_TOKEN || tryExec("gh", ["auth", "token"]);
+}
+
+/** Parse owner/repo from a GitHub remote URL (https or ssh form). */
+function parseOwnerRepo(remoteUrl: string): { owner: string; repo: string } | null {
+  const m = remoteUrl.match(/github\.com[:/]([^/]+)\/(.+?)(?:\.git)?$/);
+  return m ? { owner: m[1], repo: m[2] } : null;
+}
+
+/**
+ * Resolve owner/repo. Prefers explicit env vars, then auto-detects from the
+ * `origin` git remote of the current working directory.
+ */
+function resolveOwnerRepo(): { owner?: string; repo?: string } {
+  let owner = process.env.GITHUB_OWNER;
+  let repo = process.env.GITHUB_REPO;
+  if (!owner || !repo) {
+    const remote = tryExec("git", ["remote", "get-url", "origin"]);
+    const parsed = remote ? parseOwnerRepo(remote) : null;
+    if (parsed) {
+      owner = owner || parsed.owner;
+      repo = repo || parsed.repo;
+    }
+  }
+  return { owner, repo };
+}
+
+const token = resolveToken();
+const resolved = resolveOwnerRepo();
+export const owner = resolved.owner;
+export const repo = resolved.repo;
+
+if (!token) {
+  throw new Error(
+    `No GitHub token found. Set GITHUB_TOKEN in .env — a fine-grained PAT (least privilege; ` +
+      `Issues/Contents/Pull requests read-write, Metadata read, Administration read-write) or, for a quick start, ` +
+      `a classic broad repo-scope token: ${PAT_LINK} — or sign in with the GitHub CLI (\`gh auth login\`).`
+  );
+}
+
+if (!owner || !repo) {
+  throw new Error(
+    "Could not determine the GitHub repository. Run okffs from inside a git repo with a GitHub `origin` remote, or set GITHUB_OWNER and GITHUB_REPO in .env."
+  );
 }
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
