@@ -61,6 +61,60 @@ function buildChangelogEntry(ctx: DocsContext): string {
   return `- ${title}${ref}`;
 }
 
+// Return the body of the ## [Unreleased] section (everything between that
+// heading and the next "## [" version heading), or null if there's no marker.
+export function getUnreleasedSection(changelog: string): string | null {
+  const marker = "## [Unreleased]";
+  const idx = changelog.indexOf(marker);
+  if (idx === -1) return null;
+  const after = idx + marker.length;
+  const nextRel = changelog.slice(after).search(/\n## \[/);
+  return (nextRel === -1 ? changelog.slice(after) : changelog.slice(after, after + nextRel)).trim();
+}
+
+// Roll the CHANGELOG for a release: move the [Unreleased] entries under a new
+// "## [version] - date" heading, leave a fresh empty [Unreleased], and update
+// the compare links at the bottom. Returns the new changelog text.
+export function rollChangelogForRelease(
+  changelog: string,
+  version: string,
+  prevVersion: string,
+  date: string
+): string {
+  const marker = "## [Unreleased]";
+  const idx = changelog.indexOf(marker);
+  if (idx === -1) throw new Error("CHANGELOG.md has no ## [Unreleased] section.");
+
+  const after = idx + marker.length;
+  const nextRel = changelog.slice(after).search(/\n## \[/);
+  const bodyEnd = nextRel === -1 ? changelog.length : after + nextRel;
+  const body = changelog.slice(after, bodyEnd).replace(/\s+$/, ""); // entries, trimmed
+  const head = changelog.slice(0, after); // up to & including "## [Unreleased]"
+  const tail = changelog.slice(bodyEnd); // "\n## [prev]…" onward (incl. links)
+
+  let result = `${head}\n\n## [${version}] - ${date}${body}\n${tail}`;
+
+  // Update the compare links at the bottom.
+  const repoUrl = `https://github.com/${owner}/${repo}`;
+  const unreleasedLink = `[Unreleased]: ${repoUrl}/compare/v${version}...HEAD`;
+  const versionLink = `[${version}]: ${repoUrl}/compare/v${prevVersion}...v${version}`;
+  const versionRefExists = new RegExp(`^\\[${version.replace(/\./g, "\\.")}\\]:`, "m").test(result);
+
+  if (/^\[Unreleased\]:/m.test(result)) {
+    result = result.replace(/^\[Unreleased\]:.*$/m, unreleasedLink);
+    // Add the new version ref after [Unreleased], unless it's already there
+    // (avoids a duplicate if prepare_release is re-run for the same version).
+    if (!versionRefExists) {
+      result = result.replace(/^(\[Unreleased\]:.*\n)/m, `$1${versionLink}\n`);
+    }
+  } else {
+    // No compare links yet (new/manually-edited changelog) — append a block.
+    result = result.replace(/\s*$/, "") + `\n\n${unreleasedLink}\n`;
+    if (!versionRefExists) result += `${versionLink}\n`;
+  }
+  return result;
+}
+
 // Insert a changelog entry under the ## [Unreleased] section, scoping the search
 // for the type heading (### Added, ### Fixed, …) to that section only. Without
 // scoping, an existing "### Added" under the latest *released* version would

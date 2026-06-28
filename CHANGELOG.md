@@ -9,6 +9,7 @@ See [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Corrected the stale `OKFFS_EXCLUDE_DOCS` example in the README (valid options are `CHANGELOG.md`, `SECURITY.md`) ([#62](https://github.com/2b9sa2owa/okffs/issues/62)).
 
 ### Added
+- `prepare_release` tool — bumps the version (`package.json` + `package-lock.json`), rolls the CHANGELOG (`[Unreleased]` → a dated version section with updated compare links), commits on a release branch, and opens a PR. Two-step confirm; explicit `version`/`bump` or inferred. Does not tag or publish ([#68](https://github.com/2b9sa2owa/okffs/issues/68)).
 - `update_guidance` MCP prompt (slash command) that intelligently maintains a bounded, okffs-owned `## Project Guidance (okffs usage)` section of CLAUDE.md (marker-delimited; never touches your other content) to reflect new/changed functionality, plus the `OKFFS_UPDATE_GUIDANCE` env var to nudge it at PR time ([#64](https://github.com/2b9sa2owa/okffs/issues/64), [#66](https://github.com/2b9sa2owa/okffs/issues/66)).
 - A Changelog section in the README linking to Releases and `CHANGELOG.md` ([#62](https://github.com/2b9sa2owa/okffs/issues/62)).
 - PR review-response workflow: new `list_pr_review_comments`, `reply_to_review_comment`, and `resolve_review_thread` tools, plus an `address_pr_review` MCP prompt (slash command) that reads a PR's review comments, fixes them, replies per thread, and posts a summary. Thread resolution is gated by the new `OKFFS_RESOLVE_THREADS` env var (default off) ([#58](https://github.com/2b9sa2owa/okffs/issues/58)).
