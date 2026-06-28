@@ -25,13 +25,17 @@ function bumpVersion(v: string, type: "patch" | "minor" | "major"): string {
   return `${maj}.${min}.${pat + 1}`;
 }
 
-// Replace the first `count` occurrences of an exact substring.
-function replaceFirst(content: string, search: string, replace: string, count: number): string {
+// Replace the first `count` occurrences of an exact substring. Throws if fewer
+// than `count` occurrences exist — a partial version bump must never proceed.
+function replaceExactly(content: string, search: string, replace: string, count: number, label: string): string {
+  const found = content.split(search).length - 1;
+  if (found < count) {
+    throw new Error(`Expected at least ${count} occurrence(s) of \`${search}\` in ${label} but found ${found}. Aborting to avoid an inconsistent version bump.`);
+  }
   let out = content;
   let from = 0;
   for (let i = 0; i < count; i++) {
     const at = out.indexOf(search, from);
-    if (at === -1) break;
     out = out.slice(0, at) + replace + out.slice(at + search.length);
     from = at + replace.length;
   }
@@ -102,14 +106,18 @@ export async function handler(input: z.infer<typeof inputSchema>) {
     const lockRaw = fs.readFileSync(lockPath, "utf8");
     const clRaw = fs.readFileSync(clPath, "utf8");
     const fromVersion: string = JSON.parse(pkgRaw).version;
-
-    // Targeted version-field edits (no full reformat).
-    fs.writeFileSync(pkgPath, replaceFirst(pkgRaw, `"version": "${fromVersion}"`, `"version": "${targetVersion}"`, 1));
-    // package-lock has two self-version fields (root + packages[""]).
-    fs.writeFileSync(lockPath, replaceFirst(lockRaw, `"version": "${fromVersion}"`, `"version": "${targetVersion}"`, 2));
-
     const date = new Date().toISOString().slice(0, 10);
-    fs.writeFileSync(clPath, rollChangelogForRelease(clRaw, targetVersion, fromVersion, date));
+
+    // Compute all new contents up front (with validation) so a failure can't
+    // leave a partial bump written to disk. Targeted version-field edits avoid
+    // reformatting; package-lock has two self-version fields (root + packages[""]).
+    const newPkg = replaceExactly(pkgRaw, `"version": "${fromVersion}"`, `"version": "${targetVersion}"`, 1, "package.json");
+    const newLock = replaceExactly(lockRaw, `"version": "${fromVersion}"`, `"version": "${targetVersion}"`, 2, "package-lock.json");
+    const newCl = rollChangelogForRelease(clRaw, targetVersion, fromVersion, date);
+
+    fs.writeFileSync(pkgPath, newPkg);
+    fs.writeFileSync(lockPath, newLock);
+    fs.writeFileSync(clPath, newCl);
 
     git(["add", "package.json", "package-lock.json", "CHANGELOG.md"]);
     git(["commit", "-m", `release: ${targetVersion}`]);
@@ -142,7 +150,22 @@ export async function handler(input: z.infer<typeof inputSchema>) {
     `After merging, tag \`v${targetVersion}\` and push it — CI (\`publish.yml\`) publishes to npm on the tag. This PR does not tag or publish.`,
   ].join("\n");
 
-  const pr = await createPullRequest(`Release ${targetVersion}`, prBody, branch, baseBranch);
+  let pr: { number: number; html_url: string };
+  try {
+    pr = await createPullRequest(`Release ${targetVersion}`, prBody, branch, baseBranch);
+  } catch (err) {
+    // The release branch is already pushed; only PR creation failed.
+    return {
+      content: [{
+        type: "text" as const,
+        text:
+          `Release branch \`${branch}\` was prepared and pushed (version ${targetVersion}, CHANGELOG rolled), ` +
+          `but opening the PR failed: ${err instanceof Error ? err.message : String(err)}\n\n` +
+          `Open a PR from \`${branch}\` into \`${baseBranch}\` manually (e.g. \`gh pr create --base ${baseBranch} --head ${branch}\`). ` +
+          `After it merges, tag \`v${targetVersion}\` and push it to trigger the CI publish.`,
+      }],
+    };
+  }
 
   return {
     content: [{

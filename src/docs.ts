@@ -94,16 +94,24 @@ export function rollChangelogForRelease(
 
   let result = `${head}\n\n## [${version}] - ${date}${body}\n${tail}`;
 
-  // Update the link refs at the bottom.
+  // Update the compare links at the bottom.
   const repoUrl = `https://github.com/${owner}/${repo}`;
-  result = result.replace(
-    /\[Unreleased\]:\s*\S+/,
-    `[Unreleased]: ${repoUrl}/compare/v${version}...HEAD`
-  );
-  result = result.replace(
-    /(\[Unreleased\]:[^\n]*\n)/,
-    `$1[${version}]: ${repoUrl}/compare/v${prevVersion}...v${version}\n`
-  );
+  const unreleasedLink = `[Unreleased]: ${repoUrl}/compare/v${version}...HEAD`;
+  const versionLink = `[${version}]: ${repoUrl}/compare/v${prevVersion}...v${version}`;
+  const versionRefExists = new RegExp(`^\\[${version.replace(/\./g, "\\.")}\\]:`, "m").test(result);
+
+  if (/^\[Unreleased\]:/m.test(result)) {
+    result = result.replace(/^\[Unreleased\]:.*$/m, unreleasedLink);
+    // Add the new version ref after [Unreleased], unless it's already there
+    // (avoids a duplicate if prepare_release is re-run for the same version).
+    if (!versionRefExists) {
+      result = result.replace(/^(\[Unreleased\]:.*\n)/m, `$1${versionLink}\n`);
+    }
+  } else {
+    // No compare links yet (new/manually-edited changelog) — append a block.
+    result = result.replace(/\s*$/, "") + `\n\n${unreleasedLink}\n`;
+    if (!versionRefExists) result += `${versionLink}\n`;
+  }
   return result;
 }
 
