@@ -28,10 +28,11 @@ import * as replyToReviewComment from "./tools/reply_to_review_comment.js";
 import * as resolveReviewThread from "./tools/resolve_review_thread.js";
 
 import * as addressPrReview from "./prompts/address_pr_review.js";
+import * as updateGuidance from "./prompts/update_guidance.js";
 
 const tools = [createIssue, listIssues, closeIssue, deleteIssue, deleteBranch, getIssue, commentIssue, createIssuesFromList, plan, linkIssues, createPullRequest, commitAndUpdate, listPrReviewComments, replyToReviewComment, resolveReviewThread];
 
-const prompts = [addressPrReview];
+const prompts = [addressPrReview, updateGuidance];
 
 const server = new Server(
   { name: "okffs", version: "0.0.1" },
