@@ -211,7 +211,13 @@ export async function handler(input: z.infer<typeof inputSchema>) {
   ].join("\n") + autoCloseNote;
   await addIssueComment(input.issue_number, comment);
 
+  // OKFFS_UPDATE_GUIDANCE: nudge the agent to keep CLAUDE.md in sync with any
+  // new/changed functionality. Pushing the edit to this branch updates the PR.
+  const guidanceNote = config.updateGuidance
+    ? `\n\n💡 OKFFS_UPDATE_GUIDANCE is on: if this PR adds or changes functionality, config, or conventions, update CLAUDE.md to match (run the update_guidance prompt) and commit it to \`${branchName}\` so it's part of this PR.`
+    : "";
+
   return {
-    content: [{ type: "text" as const, text: `PR #${pr.number} ${action}: ${pr.html_url}${autoCloseNote}` }],
+    content: [{ type: "text" as const, text: `PR #${pr.number} ${action}: ${pr.html_url}${autoCloseNote}${guidanceNote}` }],
   };
 }

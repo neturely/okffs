@@ -23,6 +23,10 @@ This project is being built in phases. See [CLAUDE.md](CLAUDE.md) for the full r
 | 5 | GitHub Projects v2 (optional) | Planned |
 | 6 | Project site — `okffs.g2mk.dev` | Planned |
 
+## Changelog
+
+See [Releases](https://github.com/2b9sa2owa/okffs/releases) for per-version release notes, or [CHANGELOG.md](CHANGELOG.md) for the full history.
+
 ## Usage with Claude Code
 
 Add okffs to any project by creating a `.mcp.json` in the project root:
@@ -38,10 +42,25 @@ Add okffs to any project by creating a `.mcp.json` in the project root:
 }
 ```
 
-Create a `.env` file in the same directory with your GitHub credentials:
+### Authentication & repository
+
+okffs needs a GitHub token and a target repository. It resolves both with sensible fallbacks, so most users need little or no config:
+
+**Token** (in order of preference):
+1. `GITHUB_TOKEN` in a `.env` file. Two ways to create one:
+   - **Fine-grained PAT (recommended, least privilege)** — [create one here](https://github.com/settings/personal-access-tokens/new) with **Issues**, **Contents**, **Pull requests** (read/write), **Metadata** (read), and **Administration** (read/write) on the target repo. See [Prerequisites](#prerequisites).
+   - **Classic PAT (quickest)** — one-click pre-scoped link: [github.com/settings/tokens/new?scopes=repo&description=okffs](https://github.com/settings/tokens/new?scopes=repo&description=okffs). Note this grants the **broad `repo` scope** across all your repos; prefer the fine-grained option above if you want to limit access.
+2. If `GITHUB_TOKEN` is unset, okffs falls back to the **GitHub CLI** — if you've run `gh auth login`, it just works with no token setup.
+
+**Repository** (in order of preference):
+1. `GITHUB_OWNER` / `GITHUB_REPO` in `.env`.
+2. If unset, okffs **auto-detects** them from the `origin` git remote of the directory it runs in.
+
+So the minimal setup is often just the `.mcp.json` above — if you're signed in with `gh` and run okffs inside the repo you want to manage, no `.env` is needed at all. To configure explicitly, create a `.env` in the same directory:
 
 ```env
 GITHUB_TOKEN=ghp_your_personal_access_token_here
+# Optional — auto-detected from the git `origin` remote when omitted:
 GITHUB_OWNER=your-github-username
 GITHUB_REPO=your-repo-name
 ```
@@ -88,12 +107,12 @@ No installation needed. Add the `.mcp.json` and `.env` to your project as shown 
    cp .env.example .env
    ```
 
-   Required vars:
+   Auth & repo (all optional if you use the `gh` CLI and run inside the target repo — see [Authentication & repository](#authentication--repository)):
 
    ```env
-   GITHUB_TOKEN=ghp_your_personal_access_token_here
-   GITHUB_OWNER=your-github-username
-   GITHUB_REPO=your-repo-name
+   GITHUB_TOKEN=ghp_your_personal_access_token_here   # or sign in with `gh auth login`
+   GITHUB_OWNER=your-github-username                  # auto-detected from git origin if omitted
+   GITHUB_REPO=your-repo-name                         # auto-detected from git origin if omitted
    ```
 
 3. Optionally set defaults applied to every new issue:
@@ -106,7 +125,9 @@ No installation needed. Add the `.mcp.json` and `.env` to your project as shown 
    OKFFS_IDENTIFIER=okffs                         # optional prefix: branches become {number}-{identifier}-{slug}
    OKFFS_UPDATE_DOCS=false                        # set to true to auto-update project docs on workflow events
    OKFFS_AUTO_PR=false                            # set to true to open a draft PR when a new issue branch is created
-   OKFFS_EXCLUDE_DOCS=CLAUDE.md,CONTRIBUTING.md   # comma-separated — valid options: CLAUDE.md, SECURITY.md, CONTRIBUTING.md, CHANGELOG.md
+   OKFFS_RESOLVE_THREADS=false                    # set to true to let okffs auto-resolve PR review threads after they're addressed
+   OKFFS_UPDATE_GUIDANCE=false                    # set to true to nudge keeping CLAUDE.md in sync with functionality changes at PR time
+   OKFFS_EXCLUDE_DOCS=SECURITY.md                 # comma-separated — valid options: CHANGELOG.md, SECURITY.md
    ```
 
 4. Build and point your `.mcp.json` at the local build:
@@ -140,26 +161,50 @@ No installation needed. Add the `.mcp.json` and `.env` to your project as shown 
 | `close_issue` | Closes a GitHub issue by number. Returns a tip to run `/clear` in Claude Code before starting the next issue. |
 | `create_pull_request` | Creates a PR for an issue branch. Generates title and body from the issue, commits, and comments. If `OKFFS_UPDATE_DOCS=true`, commits the updated CHANGELOG onto the branch; pushes the branch before opening the PR. Always includes `Closes #N`. Posts a summary comment to the issue. |
 | `commit_and_update` | Stages all changes, builds a commit message from the provided `hint` (or the changed file list), commits, pushes to the issue branch, and posts a rich progress comment to the linked issue. |
+| `list_pr_review_comments` | Fetches a PR's review feedback: inline comment threads (with comment ids, file/line, author, body, resolved state) and review summaries. |
+| `reply_to_review_comment` | Replies to an inline PR review comment thread by id. |
+| `resolve_review_thread` | Marks a PR review thread resolved. Gated by `OKFFS_RESOLVE_THREADS` — declines unless that's enabled, leaving threads for you to resolve. |
+| `prepare_release` | Bumps the version (`package.json` + `package-lock.json`), rolls the CHANGELOG (`[Unreleased]` → a dated version section), commits on a release branch, and opens a PR. Two-step confirm; takes an explicit `version` or `bump` level (inferred if omitted). Does **not** tag or publish. |
 | `delete_issue` | Closes an issue **and** deletes its matching branch. Destructive — requires `confirmed: true`. |
 | `delete_branch` | Deletes a branch **and** closes its matching issue. Destructive — requires `confirmed: true`. |
 
 Destructive tools (`delete_issue`, `delete_branch`) follow a two-step confirmation pattern: call once to see a warning, then re-call with `confirmed: true` to proceed. A comment is posted to the issue before any action is taken.
 
+## Responding to PR reviews
+
+okffs ships a workflow for handling pull request review feedback out of the box. Just ask Claude in natural language, e.g.:
+
+- *"Address the review comments on PR #42"*
+- *"Can you fix any of the commented issues on the PR?"*
+
+Claude reads the review threads (`list_pr_review_comments`), fixes the valid ones, commits and pushes (`commit_and_update`), replies to each thread (`reply_to_review_comment`), and posts an overall summary (`comment_issue`). Claude provides the judgment and code fixes; okffs provides the GitHub plumbing.
+
+There's also a ready-made prompt exposed as a slash command — **`/okffs:address_pr_review`** (takes a PR number) — that runs the same loop.
+
+Review threads are only auto-resolved when `OKFFS_RESOLVE_THREADS=true`; by default they're left open for you to read and resolve yourself.
+
+## Keeping CLAUDE.md in sync
+
+The **`/okffs:update_guidance`** slash command (optionally takes an issue number) reviews the changes on the current branch and maintains a single okffs-owned section of `CLAUDE.md` — `## Project Guidance (okffs usage)`, delimited by `<!-- okffs:guidance:start -->` / `<!-- okffs:guidance:end -->` markers (created once if absent). It curates **only that region** (tools, env vars, prompts, conventions) and **never touches your hand-written content** elsewhere. It's *intelligent* guidance maintenance, not a changelog append (that's `CHANGELOG.md`'s job), and it does nothing when nothing substantive changed.
+
+Set `OKFFS_UPDATE_GUIDANCE=true` to have `create_pull_request` nudge the agent to run it at PR time so the CLAUDE.md update lands in the same PR. The slash command is available either way.
+
 ## Automatic doc updates
 
 When `OKFFS_UPDATE_DOCS=true` in your `.env`, okffs automatically updates local project docs when a pull request is created (`create_pull_request`). Changes are written to local files — committing is your responsibility. Commenting on or closing an issue does **not** trigger doc updates, to keep the CHANGELOG free of noise and duplicate entries.
 
-Files updated when relevant:
-- `CHANGELOG.md` — always updated, created if missing. Entries follow [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) format, added under `## [Unreleased]`. `create_pull_request` updates it before opening the PR and commits it onto the branch so it's included in the diff. This is the single source of auto-changelog entries.
-- `CLAUDE.md` — updated when convention, workflow, tool, config, or architecture keywords are detected.
-- `SECURITY.md` — updated when security, vulnerability, or CVE keywords are detected.
-- `CONTRIBUTING.md` — updated when convention, contributing, or workflow keywords are detected.
+Entries are **title-based one-liners** — concise and complete, so nothing needs manual cleanup.
 
-Use `OKFFS_EXCLUDE_DOCS` to exclude specific files per repo:
+Files updated when relevant:
+- `CHANGELOG.md` — always updated, created if missing. Entries follow [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) format, added under `## [Unreleased]`. `create_pull_request` updates it before opening the PR and commits it onto the branch so it's included in the diff.
+- `SECURITY.md` — updated when security, vulnerability, or CVE keywords are detected (only if the file exists).
+
+`CLAUDE.md` and `CONTRIBUTING.md` are **not** auto-updated — they previously received truncated, changelog-style appends that duplicated `CHANGELOG.md` and needed manual cleanup. `README.md` is also intentionally excluded — maintain it manually.
+
+Use `OKFFS_EXCLUDE_DOCS` to exclude specific files per repo (valid options: `CHANGELOG.md`, `SECURITY.md`):
 ```env
-OKFFS_EXCLUDE_DOCS=CLAUDE.md,CONTRIBUTING.md
+OKFFS_EXCLUDE_DOCS=SECURITY.md
 ```
-README.md is intentionally excluded from auto-updates — maintain it manually.
 
 ## Conventions
 
@@ -184,16 +229,17 @@ README.md is intentionally excluded from auto-updates — maintain it manually.
 
 Requires an npm account with maintainer access to the `okffs` package.
 
-1. Bump the version in `package.json` following [semver](https://semver.org/)
-2. Commit and merge to `main`
-3. Tag and push:
+1. **Prepare the release** with the `prepare_release` tool (ask Claude, e.g. *"prepare a release"* or *"prepare release 0.2.0"*). It bumps `package.json` + `package-lock.json`, rolls the CHANGELOG, and opens a release PR. Review and merge it (then merge to `main`).
+2. **Tag and push** the version:
 
    ```bash
-   git tag v0.1.4
-   git push origin v0.1.4
+   git tag v0.2.0
+   git push origin v0.2.0
    ```
 
-The GitHub Actions workflow publishes to npm automatically on semver tags (`v*.*.*`). The `NPM_TOKEN` secret must be set in the repository settings.
+The GitHub Actions workflow publishes to npm automatically on semver tags (`v*.*.*`) — so **do not run `npm publish` manually** (it would collide with CI). The `NPM_TOKEN` secret must be set in the repository settings.
+
+> `prepare_release` deliberately stops before tagging/publishing, keeping the irreversible step (the tag that triggers CI publish) a manual decision. You can still bump by hand if you prefer.
 
 ## Codebase search
 

@@ -1,13 +1,73 @@
+import { execFileSync } from "node:child_process";
 import { config } from "./config.js";
 
 const BASE = "https://api.github.com";
 
-const token = process.env.GITHUB_TOKEN;
-export const owner = process.env.GITHUB_OWNER;
-export const repo = process.env.GITHUB_REPO;
+const PAT_LINK =
+  "https://github.com/settings/tokens/new?scopes=repo&description=okffs";
 
-if (!token || !owner || !repo) {
-  throw new Error("GITHUB_TOKEN, GITHUB_OWNER, and GITHUB_REPO must be set");
+/** Run a command and return trimmed stdout, or null on any failure. */
+function tryExec(cmd: string, args: string[]): string | null {
+  try {
+    const out = execFileSync(cmd, args, {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+    return out || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Resolve a GitHub token. Prefers GITHUB_TOKEN, then falls back to the GitHub
+ * CLI (`gh auth token`) so users already signed in with `gh` need no setup.
+ */
+function resolveToken(): string | null {
+  return process.env.GITHUB_TOKEN || tryExec("gh", ["auth", "token"]);
+}
+
+/** Parse owner/repo from a GitHub remote URL (https or ssh form). */
+function parseOwnerRepo(remoteUrl: string): { owner: string; repo: string } | null {
+  const m = remoteUrl.match(/github\.com[:/]([^/]+)\/(.+?)(?:\.git)?$/);
+  return m ? { owner: m[1], repo: m[2] } : null;
+}
+
+/**
+ * Resolve owner/repo. Prefers explicit env vars, then auto-detects from the
+ * `origin` git remote of the current working directory.
+ */
+function resolveOwnerRepo(): { owner?: string; repo?: string } {
+  let owner = process.env.GITHUB_OWNER;
+  let repo = process.env.GITHUB_REPO;
+  if (!owner || !repo) {
+    const remote = tryExec("git", ["remote", "get-url", "origin"]);
+    const parsed = remote ? parseOwnerRepo(remote) : null;
+    if (parsed) {
+      owner = owner || parsed.owner;
+      repo = repo || parsed.repo;
+    }
+  }
+  return { owner, repo };
+}
+
+const token = resolveToken();
+const resolved = resolveOwnerRepo();
+export const owner = resolved.owner;
+export const repo = resolved.repo;
+
+if (!token) {
+  throw new Error(
+    `No GitHub token found. Set GITHUB_TOKEN in .env — a fine-grained PAT (least privilege; ` +
+      `Issues/Contents/Pull requests read-write, Metadata read, Administration read-write) or, for a quick start, ` +
+      `a classic broad repo-scope token: ${PAT_LINK} — or sign in with the GitHub CLI (\`gh auth login\`).`
+  );
+}
+
+if (!owner || !repo) {
+  throw new Error(
+    "Could not determine the GitHub repository. Run okffs from inside a git repo with a GitHub `origin` remote, or set GITHUB_OWNER and GITHUB_REPO in .env."
+  );
 }
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
@@ -279,4 +339,115 @@ export function extractBranchFromBody(body: string | null): string | null {
   if (!body) return null;
   const match = body.match(/\*\*Branch:\*\*\s+`([^`]+)`/);
   return match ? match[1] : null;
+}
+
+// ── PR review feedback ──────────────────────────────────────────────────────
+
+export interface ReviewComment {
+  id: number; // REST databaseId — used as in_reply_to when replying
+  path: string | null;
+  line: number | null;
+  author: string;
+  body: string;
+}
+
+export interface ReviewThread {
+  id: string; // GraphQL node id — used to resolve the thread
+  isResolved: boolean;
+  comments: ReviewComment[];
+}
+
+export interface ReviewSummary {
+  author: string;
+  state: string;
+  body: string;
+}
+
+export interface PullRequestReview {
+  threads: ReviewThread[];
+  reviews: ReviewSummary[];
+}
+
+// Fetch inline review threads (with resolved state + thread ids) and overall
+// review summaries for a PR. Uses GraphQL so we get thread ids and resolved
+// state, which the REST comments endpoint does not expose.
+export async function getPullRequestReview(prNumber: number): Promise<PullRequestReview> {
+  const data = await graphqlRequest<{
+    repository: {
+      pullRequest: {
+        reviewThreads: {
+          nodes: Array<{
+            id: string;
+            isResolved: boolean;
+            comments: {
+              nodes: Array<{
+                databaseId: number;
+                path: string | null;
+                line: number | null;
+                originalLine: number | null;
+                body: string;
+                author: { login: string } | null;
+              }>;
+            };
+          }>;
+        };
+        reviews: {
+          nodes: Array<{ state: string; body: string; author: { login: string } | null }>;
+        };
+      } | null;
+    };
+  }>(
+    `query($owner:String!,$repo:String!,$pr:Int!){
+      repository(owner:$owner,name:$repo){
+        pullRequest(number:$pr){
+          reviewThreads(first:100){ nodes{ id isResolved comments(first:50){ nodes{ databaseId path line originalLine body author{login} } } } }
+          reviews(first:50){ nodes{ state body author{login} } }
+        }
+      }
+    }`,
+    { owner, repo, pr: prNumber }
+  );
+
+  const pr = data.repository.pullRequest;
+  if (!pr) {
+    // GitHub GraphQL returns pullRequest: null (no errors array) for an
+    // unknown PR number — surface a clear message instead of a null deref.
+    throw new Error(`Pull request #${prNumber} not found in ${owner}/${repo}.`);
+  }
+  const threads: ReviewThread[] = pr.reviewThreads.nodes.map((t) => ({
+    id: t.id,
+    isResolved: t.isResolved,
+    comments: t.comments.nodes.map((c) => ({
+      id: c.databaseId,
+      path: c.path,
+      line: c.line ?? c.originalLine,
+      author: c.author?.login ?? "unknown",
+      body: c.body,
+    })),
+  }));
+  const reviews: ReviewSummary[] = pr.reviews.nodes
+    .filter((r) => r.body && r.body.trim())
+    .map((r) => ({ author: r.author?.login ?? "unknown", state: r.state, body: r.body }));
+
+  return { threads, reviews };
+}
+
+// Reply to an inline review comment thread (REST in_reply_to).
+export async function replyToReviewComment(
+  prNumber: number,
+  commentId: number,
+  body: string
+): Promise<{ id: number; html_url: string }> {
+  return request(`/repos/${owner}/${repo}/pulls/${prNumber}/comments`, {
+    method: "POST",
+    body: JSON.stringify({ body, in_reply_to: commentId }),
+  });
+}
+
+// Mark a review thread resolved (GraphQL — no REST equivalent).
+export async function resolveReviewThread(threadId: string): Promise<void> {
+  await graphqlRequest(
+    `mutation($id:ID!){ resolveReviewThread(input:{threadId:$id}){ thread{ id isResolved } } }`,
+    { id: threadId }
+  );
 }

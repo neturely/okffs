@@ -74,3 +74,7 @@ Use conventional commits:
 ## Publishing
 
 Maintainer only. Bump `package.json` version, merge to `main`, tag with `vX.Y.Z` — GitHub Actions handles the npm publish automatically.
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for release notes and history.

@@ -1,9 +1,13 @@
 import fs from "fs";
 import path from "path";
 import { config } from "./config.js";
+import { owner, repo } from "./github.js";
 
-// Scoped to: CLAUDE.md, CHANGELOG.md, SECURITY.md, CONTRIBUTING.md
-// CHANGELOG.md is created if missing. Others are only updated if they exist.
+// Scoped to: CHANGELOG.md (always) and SECURITY.md (security-related changes only).
+// Entries are title-based one-liners — concise and complete, so nothing needs
+// manual curation. CHANGELOG.md is created if missing; SECURITY.md is only
+// updated if it exists. CLAUDE.md and CONTRIBUTING.md are intentionally not
+// auto-updated (they previously got noisy, truncated changelog-style appends).
 // Files are written locally to process.cwd(). Committing is the user's responsibility.
 // Failures warn only — never throw.
 
@@ -44,19 +48,71 @@ function truncateAtWord(text: string, max: number): string {
 }
 
 function buildChangelogEntry(ctx: DocsContext): string {
-  const ref = ctx.issueNumber ? ` ([#${ctx.issueNumber}](https://github.com/${process.env.GITHUB_OWNER}/${process.env.GITHUB_REPO}/issues/${ctx.issueNumber}))` : "";
-  const title = ctx.issueTitle ?? ctx.trigger;
+  const ref = ctx.issueNumber ? ` ([#${ctx.issueNumber}](https://github.com/${owner}/${repo}/issues/${ctx.issueNumber}))` : "";
+  // Title-based entry: titles are already concise and complete, so the entry is
+  // readable with nothing to curate. We deliberately do NOT append a truncated
+  // excerpt of the (often long) summary — that produced incomplete-looking,
+  // ellipsis-ended entries that needed manual cleanup on every PR. truncateAtWord
+  // remains only as a safety net for an unusually long title.
+  // Prefer the issue title; fall back to the summary (non-issue triggers like
+  // delete_branch pass a meaningful summary but no title) before the bare trigger.
+  const source = ctx.issueTitle || ctx.summary || ctx.trigger;
+  const title = truncateAtWord(source.replace(/\s+/g, " ").trim(), 120);
+  return `- ${title}${ref}`;
+}
 
-  const cleanSummary = ctx.summary
-    .replace(/\*\*Branch:\*\*\s*`[^`]+`/g, "")
-    .replace(/## Relationships[\s\S]*/g, "")
-    .replace(/^(Closed:|Fixed:|Added:|Changed:)\s*/i, "")
-    .replace(/\s+/g, " ") // collapse newlines/runs of whitespace into a single line
-    .trim();
+// Return the body of the ## [Unreleased] section (everything between that
+// heading and the next "## [" version heading), or null if there's no marker.
+export function getUnreleasedSection(changelog: string): string | null {
+  const marker = "## [Unreleased]";
+  const idx = changelog.indexOf(marker);
+  if (idx === -1) return null;
+  const after = idx + marker.length;
+  const nextRel = changelog.slice(after).search(/\n## \[/);
+  return (nextRel === -1 ? changelog.slice(after) : changelog.slice(after, after + nextRel)).trim();
+}
 
-  const truncated = truncateAtWord(cleanSummary, 200);
-  const summaryPart = truncated && truncated !== title ? ` — ${truncated}` : "";
-  return `- ${title}${ref}${summaryPart}`;
+// Roll the CHANGELOG for a release: move the [Unreleased] entries under a new
+// "## [version] - date" heading, leave a fresh empty [Unreleased], and update
+// the compare links at the bottom. Returns the new changelog text.
+export function rollChangelogForRelease(
+  changelog: string,
+  version: string,
+  prevVersion: string,
+  date: string
+): string {
+  const marker = "## [Unreleased]";
+  const idx = changelog.indexOf(marker);
+  if (idx === -1) throw new Error("CHANGELOG.md has no ## [Unreleased] section.");
+
+  const after = idx + marker.length;
+  const nextRel = changelog.slice(after).search(/\n## \[/);
+  const bodyEnd = nextRel === -1 ? changelog.length : after + nextRel;
+  const body = changelog.slice(after, bodyEnd).replace(/\s+$/, ""); // entries, trimmed
+  const head = changelog.slice(0, after); // up to & including "## [Unreleased]"
+  const tail = changelog.slice(bodyEnd); // "\n## [prev]…" onward (incl. links)
+
+  let result = `${head}\n\n## [${version}] - ${date}${body}\n${tail}`;
+
+  // Update the compare links at the bottom.
+  const repoUrl = `https://github.com/${owner}/${repo}`;
+  const unreleasedLink = `[Unreleased]: ${repoUrl}/compare/v${version}...HEAD`;
+  const versionLink = `[${version}]: ${repoUrl}/compare/v${prevVersion}...v${version}`;
+  const versionRefExists = new RegExp(`^\\[${version.replace(/\./g, "\\.")}\\]:`, "m").test(result);
+
+  if (/^\[Unreleased\]:/m.test(result)) {
+    result = result.replace(/^\[Unreleased\]:.*$/m, unreleasedLink);
+    // Add the new version ref after [Unreleased], unless it's already there
+    // (avoids a duplicate if prepare_release is re-run for the same version).
+    if (!versionRefExists) {
+      result = result.replace(/^(\[Unreleased\]:.*\n)/m, `$1${versionLink}\n`);
+    }
+  } else {
+    // No compare links yet (new/manually-edited changelog) — append a block.
+    result = result.replace(/\s*$/, "") + `\n\n${unreleasedLink}\n`;
+    if (!versionRefExists) result += `${versionLink}\n`;
+  }
+  return result;
 }
 
 // Insert a changelog entry under the ## [Unreleased] section, scoping the search
@@ -107,23 +163,6 @@ function shouldUpdateSecurity(ctx: DocsContext): boolean {
   return /security|vulnerability|cve/i.test(lower);
 }
 
-function shouldUpdateContributing(ctx: DocsContext): boolean {
-  const lower = (ctx.issueTitle ?? "") + ctx.summary;
-  return /convention|contributing|workflow/i.test(lower);
-}
-
-function shouldUpdateClaude(ctx: DocsContext): boolean {
-  const lower = (ctx.issueTitle ?? "") + ctx.summary;
-  return /convention|workflow|tool|config|setup|architecture/i.test(lower);
-}
-
-function appendToSection(content: string, heading: string, entry: string): string {
-  if (content.includes(heading)) {
-    return content.replace(heading, heading + entry);
-  }
-  return content.trimEnd() + "\n\n" + heading + entry;
-}
-
 function readFile(filePath: string): string | null {
   try {
     return fs.existsSync(filePath) ? fs.readFileSync(filePath, "utf8") : null;
@@ -155,43 +194,22 @@ function determineUpdates(ctx: DocsContext, base: string): FileUpdate[] {
     }
   }
 
-  // CLAUDE.md — only for convention/workflow/tool/config changes
-  if (shouldUpdateClaude(ctx) && !isExcluded("CLAUDE.md")) {
-    const claudePath = path.join(base, "CLAUDE.md");
-    const claude = readFile(claudePath);
-    if (claude !== null) {
-      const line = `\n- ${isoDate()}${ctx.issueNumber ? ` ([#${ctx.issueNumber}](https://github.com/${process.env.GITHUB_OWNER}/${process.env.GITHUB_REPO}/issues/${ctx.issueNumber}))` : ""}: ${ctx.summary.slice(0, 200)}`;
-      updates.push({
-        path: claudePath,
-        content: appendToSection(claude, "## Recent Changes", line),
-        created: false,
-      });
-    }
-  }
-
-  // SECURITY.md — only for security-related triggers
+  // SECURITY.md — only for security-related triggers. Title-based one-liner.
   if (shouldUpdateSecurity(ctx) && !isExcluded("SECURITY.md")) {
     const secPath = path.join(base, "SECURITY.md");
     const sec = readFile(secPath);
     if (sec !== null) {
-      const line = `\n- ${isoDate()}${ctx.issueNumber ? ` (#${ctx.issueNumber})` : ""}: ${ctx.summary}`;
+      const source = ctx.issueTitle || ctx.summary || ctx.trigger;
+      const title = truncateAtWord(source.replace(/\s+/g, " ").trim(), 120);
+      const line = `\n- ${isoDate()}${ctx.issueNumber ? ` (#${ctx.issueNumber})` : ""}: ${title}`;
       updates.push({ path: secPath, content: sec.trimEnd() + line, created: false });
     }
   }
 
-  // CONTRIBUTING.md — only when conventions changed
-  if (shouldUpdateContributing(ctx) && !isExcluded("CONTRIBUTING.md")) {
-    const contribPath = path.join(base, "CONTRIBUTING.md");
-    const contrib = readFile(contribPath);
-    if (contrib !== null) {
-      const line = `\n- ${isoDate()}: ${ctx.summary}`;
-      updates.push({
-        path: contribPath,
-        content: appendToSection(contrib, "## Changelog", line),
-        created: false,
-      });
-    }
-  }
+  // Note: CLAUDE.md and CONTRIBUTING.md are intentionally NOT auto-updated.
+  // They previously got truncated "## Recent Changes"/"## Changelog" appends
+  // that duplicated the CHANGELOG and required manual cleanup every PR. The
+  // CHANGELOG is the single auto-doc target now (plus SECURITY.md when relevant).
 
   return updates;
 }
