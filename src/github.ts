@@ -394,7 +394,7 @@ export async function getPullRequestReview(prNumber: number): Promise<PullReques
         reviews: {
           nodes: Array<{ state: string; body: string; author: { login: string } | null }>;
         };
-      };
+      } | null;
     };
   }>(
     `query($owner:String!,$repo:String!,$pr:Int!){
@@ -409,6 +409,11 @@ export async function getPullRequestReview(prNumber: number): Promise<PullReques
   );
 
   const pr = data.repository.pullRequest;
+  if (!pr) {
+    // GitHub GraphQL returns pullRequest: null (no errors array) for an
+    // unknown PR number — surface a clear message instead of a null deref.
+    throw new Error(`Pull request #${prNumber} not found in ${owner}/${repo}.`);
+  }
   const threads: ReviewThread[] = pr.reviewThreads.nodes.map((t) => ({
     id: t.id,
     isResolved: t.isResolved,

@@ -140,5 +140,5 @@ uvx --from "semble[mcp]" semble search "your query" .
 ```
 
 ## Recent Changes
-- 2026-06-28 ([#58](https://github.com/2b9sa2owa/okffs/issues/58)): Adds an out-of-the-box PR review-response workflow. New tools: list_pr_review_comments (fetch inline threads + review summaries via GraphQL, with comment ids, file/line, author, body, resolved state, 
+- 2026-06-28 ([#58](https://github.com/2b9sa2owa/okffs/issues/58)): Added an out-of-the-box PR review-response workflow — `list_pr_review_comments`, `reply_to_review_comment`, and `resolve_review_thread` tools plus an `address_pr_review` MCP prompt, gated by `OKFFS_RESOLVE_THREADS`.
 - 2026-06-28 ([#56](https://github.com/2b9sa2owa/okffs/issues/56)): Reduced auth/setup friction — token resolves from `GITHUB_TOKEN` or falls back to `gh auth token`; owner/repo auto-detect from the `origin` git remote when env vars are unset.
