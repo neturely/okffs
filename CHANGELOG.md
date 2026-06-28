@@ -5,6 +5,7 @@ See [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 ### Changed
+- feat: PR review-response workflow (tools + MCP prompt) for handling PR comments out of the box ([#58](https://github.com/2b9sa2owa/okffs/issues/58)) — Adds an out-of-the-box PR review-response workflow. New tools: list_pr_review_comments (fetch inline threads + review summaries via GraphQL, with comment ids, file/line, author, body, resolved state,…
 - feat: reduce auth/setup friction for end users (tiered, low-complexity first) ([#56](https://github.com/2b9sa2owa/okffs/issues/56)) — Implements Tier 1 + Tier 2 of the auth/setup friction reduction. Token now resolves from GITHUB_TOKEN or falls back to the GitHub CLI (`gh auth token`); owner/repo resolve from…
 
 ## [0.1.6] - 2026-06-27
