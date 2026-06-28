@@ -45,7 +45,8 @@ When `OKFFS_IDENTIFIER` is set, a project-scoped prefix is inserted: `{issue-num
 - TypeScript MCP server scaffolded.
 - PAT auth via `.env` (`GITHUB_TOKEN`, `GITHUB_OWNER`, `GITHUB_REPO`).
 - `.env` is loaded automatically via `dotenv` from `process.cwd()` — no `--env-file` flag needed in `.mcp.json`.
-- Tools: `create_issue`, `list_issues`, `close_issue`, `delete_issue`, `delete_branch`, `get_issue`, `comment_issue`, `link_issues`, `create_issues_from_list`, `plan`, `create_pull_request`, `commit_and_update`.
+- Tools: `create_issue`, `list_issues`, `close_issue`, `delete_issue`, `delete_branch`, `get_issue`, `comment_issue`, `link_issues`, `create_issues_from_list`, `plan`, `create_pull_request`, `commit_and_update`, `list_pr_review_comments`, `reply_to_review_comment`, `resolve_review_thread`.
+- Prompts (MCP `prompts` capability, surfaced as slash commands): `address_pr_review` — read a PR's review comments, fix the valid ones, reply per thread, post a summary, and optionally resolve threads.
 - `create_issue` auto-creates a branch, embeds the branch name in the issue body, applies default assignees/labels from `.env`, infers labels from title/description and merges with `OKFFS_DEFAULT_LABELS`. Supports optional `assignees`, `labels`, `milestone`. If a relationship is mentioned (blocked by, blocking, parent), automatically calls `link_issues` after creation. If `OKFFS_AUTO_PR=true`, pushes an empty init commit to the branch (capturing and restoring the current branch) and opens a draft PR immediately.
 - `create_issues_from_list` accepts a list of tasks and creates all issues + branches in one shot. Two-step confirmation. Per-task `labels`, `assignees`, and `milestone` supported.
 - `plan` takes a free-text `description` plus the issue breakdown Claude generates from it (titles, descriptions, labels, inter-task relationships referenced by 1-based index) and creates all issues + branches in one shot. Two-step confirmation (preview, then `confirmed: true`). Resolves task-index relationships to real issue numbers and writes them to each issue's `## Relationships` section. If `OKFFS_AUTO_PR=true`, pushes an empty init commit per branch and opens a draft PR for each. Extends the `create_issues_from_list` pattern — Claude is the AI layer that produces the breakdown.
@@ -55,6 +56,10 @@ When `OKFFS_IDENTIFIER` is set, a project-scoped prefix is inserted: `{issue-num
 - `link_issues` links two issues with a relationship — `blocked_by`, `blocking`, or `parent`. Stored in the issue body under a `## Relationships` section.
 - `close_issue` closes the issue and returns a tip suggesting the user runs `/clear` in Claude Code to reset context before the next issue. (Under `OKFFS_AUTO_PR=true` the draft PR already exists from `create_issue`, so no PR is created here.)
 - `commit_and_update` stages all changes, builds a commit message from the optional `hint` (or the changed file list), commits, pushes to the issue branch, and posts a rich progress comment to the linked issue.
+- `list_pr_review_comments` fetches a PR's review feedback via GraphQL — inline threads (comment ids, file/line, author, body, resolved state, thread ids) and review summaries. The agent reads these, fixes, then replies/resolves.
+- `reply_to_review_comment` replies to an inline review comment thread by id (REST `in_reply_to`).
+- `resolve_review_thread` resolves a review thread (GraphQL). Gated by `OKFFS_RESOLVE_THREADS`: declines unless that env var is `true`, leaving threads for the user to resolve manually.
+- `address_pr_review` (MCP prompt / slash command) orchestrates the loop: `list_pr_review_comments` → triage + fix → `commit_and_update` → `reply_to_review_comment` per thread → `comment_issue` summary → `resolve_review_thread` (respects `OKFFS_RESOLVE_THREADS`). The host LLM provides triage/fixes; okffs provides the plumbing.
 - `delete_issue` closes an issue and deletes its branch. Two-step: call once for a warning, re-call with `confirmed: true` to proceed. Posts a comment before acting.
 - `delete_branch` deletes a branch and closes its issue (issue number parsed from branch name prefix). Same two-step confirmation pattern. Posts a comment before acting.
 - Optional `.env` defaults: `OKFFS_DEFAULT_ASSIGNEES`, `OKFFS_DEFAULT_LABELS`, `OKFFS_PROMPT_METADATA`, `OKFFS_BASE_BRANCH`, `OKFFS_IDENTIFIER`, `OKFFS_UPDATE_DOCS`, `OKFFS_AUTO_PR`.
@@ -62,6 +67,7 @@ When `OKFFS_IDENTIFIER` is set, a project-scoped prefix is inserted: `{issue-num
 - `OKFFS_IDENTIFIER` — optional project-scoped prefix inserted into branch names: `{issue-number}-{identifier}-{slug}`. Unset by default.
 - `OKFFS_UPDATE_DOCS` — set to `true` to auto-update local project docs (CHANGELOG.md, CLAUDE.md, SECURITY.md, CONTRIBUTING.md) when a pull request is created (`create_pull_request`). Default `false`. README.md is intentionally excluded. `comment_issue` and `close_issue` do not trigger doc updates — `create_pull_request` is the single source of auto-changelog entries (avoids duplicate/noisy entries).
 - `OKFFS_AUTO_PR` — set to `true` to open a draft PR when a new issue branch is created (via `create_issue`). Default `false`.
+- `OKFFS_RESOLVE_THREADS` — set to `true` to let okffs auto-resolve PR review threads after they're addressed (via `resolve_review_thread`). Default `false` — threads are left open for the user to resolve.
 
 ### Phase 2 — Bulk creation ✓ Complete
 
@@ -112,7 +118,7 @@ When `OKFFS_IDENTIFIER` is set, a project-scoped prefix is inserted: `{issue-num
 - Auth resolution: `GITHUB_TOKEN` if set, otherwise falls back to the GitHub CLI (`gh auth token`). If neither is available, startup fails with a message linking to the one-click PAT page.
 - Repo resolution: `GITHUB_OWNER`/`GITHUB_REPO` if set, otherwise auto-detected by parsing the `origin` git remote of `process.cwd()`. So with `gh` signed in and okffs run inside the target repo, no `.env` is required.
 - Resolution lives in `src/github.ts` (`resolveToken`, `resolveOwnerRepo`); `owner`/`repo` are exported from there and reused (e.g. `docs.ts`) so detected values flow everywhere.
-- Optional: `OKFFS_DEFAULT_ASSIGNEES` (comma-separated), `OKFFS_DEFAULT_LABELS` (comma-separated), `OKFFS_PROMPT_METADATA` (set to `false` to silence the tip), `OKFFS_BASE_BRANCH` (branch to create from; defaults to repo default), `OKFFS_IDENTIFIER` (optional project-scoped branch prefix: `{number}-{identifier}-{slug}`), `OKFFS_UPDATE_DOCS` (set to `true` to enable auto doc updates), `OKFFS_AUTO_PR` (set to `true` to auto-create PR on issue close), `OKFFS_EXCLUDE_DOCS` (comma-separated filenames to exclude from auto-updates — valid options: `CLAUDE.md`, `SECURITY.md`, `CONTRIBUTING.md`, `CHANGELOG.md`).
+- Optional: `OKFFS_DEFAULT_ASSIGNEES` (comma-separated), `OKFFS_DEFAULT_LABELS` (comma-separated), `OKFFS_PROMPT_METADATA` (set to `false` to silence the tip), `OKFFS_BASE_BRANCH` (branch to create from; defaults to repo default), `OKFFS_IDENTIFIER` (optional project-scoped branch prefix: `{number}-{identifier}-{slug}`), `OKFFS_UPDATE_DOCS` (set to `true` to enable auto doc updates), `OKFFS_AUTO_PR` (set to `true` to auto-create PR on issue close), `OKFFS_RESOLVE_THREADS` (set to `true` to auto-resolve PR review threads after addressing; default leaves them for the user), `OKFFS_EXCLUDE_DOCS` (comma-separated filenames to exclude from auto-updates — valid options: `CLAUDE.md`, `SECURITY.md`, `CONTRIBUTING.md`, `CHANGELOG.md`).
 
 ## Local dev vs published package
 

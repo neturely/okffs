@@ -121,6 +121,7 @@ No installation needed. Add the `.mcp.json` and `.env` to your project as shown 
    OKFFS_IDENTIFIER=okffs                         # optional prefix: branches become {number}-{identifier}-{slug}
    OKFFS_UPDATE_DOCS=false                        # set to true to auto-update project docs on workflow events
    OKFFS_AUTO_PR=false                            # set to true to open a draft PR when a new issue branch is created
+   OKFFS_RESOLVE_THREADS=false                    # set to true to let okffs auto-resolve PR review threads after they're addressed
    OKFFS_EXCLUDE_DOCS=CLAUDE.md,CONTRIBUTING.md   # comma-separated — valid options: CLAUDE.md, SECURITY.md, CONTRIBUTING.md, CHANGELOG.md
    ```
 
@@ -155,10 +156,26 @@ No installation needed. Add the `.mcp.json` and `.env` to your project as shown 
 | `close_issue` | Closes a GitHub issue by number. Returns a tip to run `/clear` in Claude Code before starting the next issue. |
 | `create_pull_request` | Creates a PR for an issue branch. Generates title and body from the issue, commits, and comments. If `OKFFS_UPDATE_DOCS=true`, commits the updated CHANGELOG onto the branch; pushes the branch before opening the PR. Always includes `Closes #N`. Posts a summary comment to the issue. |
 | `commit_and_update` | Stages all changes, builds a commit message from the provided `hint` (or the changed file list), commits, pushes to the issue branch, and posts a rich progress comment to the linked issue. |
+| `list_pr_review_comments` | Fetches a PR's review feedback: inline comment threads (with comment ids, file/line, author, body, resolved state) and review summaries. |
+| `reply_to_review_comment` | Replies to an inline PR review comment thread by id. |
+| `resolve_review_thread` | Marks a PR review thread resolved. Gated by `OKFFS_RESOLVE_THREADS` — declines unless that's enabled, leaving threads for you to resolve. |
 | `delete_issue` | Closes an issue **and** deletes its matching branch. Destructive — requires `confirmed: true`. |
 | `delete_branch` | Deletes a branch **and** closes its matching issue. Destructive — requires `confirmed: true`. |
 
 Destructive tools (`delete_issue`, `delete_branch`) follow a two-step confirmation pattern: call once to see a warning, then re-call with `confirmed: true` to proceed. A comment is posted to the issue before any action is taken.
+
+## Responding to PR reviews
+
+okffs ships a workflow for handling pull request review feedback out of the box. Just ask Claude in natural language, e.g.:
+
+- *"Address the review comments on PR #42"*
+- *"Can you fix any of the commented issues on the PR?"*
+
+Claude reads the review threads (`list_pr_review_comments`), fixes the valid ones, commits and pushes (`commit_and_update`), replies to each thread (`reply_to_review_comment`), and posts an overall summary (`comment_issue`). Claude provides the judgment and code fixes; okffs provides the GitHub plumbing.
+
+There's also a ready-made prompt exposed as a slash command — **`/okffs:address_pr_review`** (takes a PR number) — that runs the same loop.
+
+Review threads are only auto-resolved when `OKFFS_RESOLVE_THREADS=true`; by default they're left open for you to read and resolve yourself.
 
 ## Automatic doc updates
 
