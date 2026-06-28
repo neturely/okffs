@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 See [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+
+## [0.2.0] - 2026-06-28
 ### Fixed
 - Auto-doc entries are now concise title-based one-liners instead of truncated summary dumps; CLAUDE.md and CONTRIBUTING.md are no longer auto-updated (CHANGELOG.md, plus SECURITY.md when relevant, are the only auto-doc targets) ([#60](https://github.com/2b9sa2owa/okffs/issues/60)).
 - Corrected the stale `OKFFS_EXCLUDE_DOCS` example in the README (valid options are `CHANGELOG.md`, `SECURITY.md`) ([#62](https://github.com/2b9sa2owa/okffs/issues/62)).
@@ -44,6 +46,7 @@ See [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `create_pull_request` commits the updated CHANGELOG onto the branch and pushes the branch before opening the PR, with non-blocking error handling ([#38](https://github.com/2b9sa2owa/okffs/issues/38)).
 - All git operations now run via `execFileSync` with argument arrays (no shell), removing command-injection risk from branch names and commit hints; tools also checkout the target branch before committing/pushing and restore the original branch afterward.
 
-[Unreleased]: https://github.com/2b9sa2owa/okffs/compare/v0.1.6...HEAD
+[Unreleased]: https://github.com/2b9sa2owa/okffs/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/2b9sa2owa/okffs/compare/v0.1.6...v0.2.0
 [0.1.6]: https://github.com/2b9sa2owa/okffs/compare/v0.1.5...v0.1.6
 [0.1.5]: https://github.com/2b9sa2owa/okffs/compare/v0.1.4...v0.1.5
