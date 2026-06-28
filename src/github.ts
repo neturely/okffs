@@ -58,7 +58,9 @@ export const repo = resolved.repo;
 
 if (!token) {
   throw new Error(
-    `No GitHub token found. Set GITHUB_TOKEN in .env (create one at ${PAT_LINK}), or sign in with the GitHub CLI (\`gh auth login\`).`
+    `No GitHub token found. Set GITHUB_TOKEN in .env — a fine-grained PAT (least privilege; ` +
+      `Issues/Contents/Pull requests read-write, Metadata read, Administration read-write) or, for a quick start, ` +
+      `a classic broad repo-scope token: ${PAT_LINK} — or sign in with the GitHub CLI (\`gh auth login\`).`
   );
 }
 

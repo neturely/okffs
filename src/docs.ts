@@ -161,7 +161,7 @@ function determineUpdates(ctx: DocsContext, base: string): FileUpdate[] {
     const claudePath = path.join(base, "CLAUDE.md");
     const claude = readFile(claudePath);
     if (claude !== null) {
-      const line = `\n- ${isoDate()}${ctx.issueNumber ? ` ([#${ctx.issueNumber}](https://github.com/${owner}/${repo}/issues/${ctx.issueNumber}))` : ""}: ${ctx.summary.slice(0, 200)}`;
+      const line = `\n- ${isoDate()}${ctx.issueNumber ? ` ([#${ctx.issueNumber}](https://github.com/${owner}/${repo}/issues/${ctx.issueNumber}))` : ""}: ${truncateAtWord(ctx.summary.replace(/\s+/g, " ").trim(), 200)}`;
       updates.push({
         path: claudePath,
         content: appendToSection(claude, "## Recent Changes", line),

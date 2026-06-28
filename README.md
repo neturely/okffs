@@ -43,7 +43,9 @@ Add okffs to any project by creating a `.mcp.json` in the project root:
 okffs needs a GitHub token and a target repository. It resolves both with sensible fallbacks, so most users need little or no config:
 
 **Token** (in order of preference):
-1. `GITHUB_TOKEN` in a `.env` file. Create a token with one click: [github.com/settings/tokens/new?scopes=repo&description=okffs](https://github.com/settings/tokens/new?scopes=repo&description=okffs).
+1. `GITHUB_TOKEN` in a `.env` file. Two ways to create one:
+   - **Fine-grained PAT (recommended, least privilege)** — [create one here](https://github.com/settings/personal-access-tokens/new) with **Issues**, **Contents**, **Pull requests** (read/write), **Metadata** (read), and **Administration** (read/write) on the target repo. See [Prerequisites](#prerequisites).
+   - **Classic PAT (quickest)** — one-click pre-scoped link: [github.com/settings/tokens/new?scopes=repo&description=okffs](https://github.com/settings/tokens/new?scopes=repo&description=okffs). Note this grants the **broad `repo` scope** across all your repos; prefer the fine-grained option above if you want to limit access.
 2. If `GITHUB_TOKEN` is unset, okffs falls back to the **GitHub CLI** — if you've run `gh auth login`, it just works with no token setup.
 
 **Repository** (in order of preference):

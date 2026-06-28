@@ -134,4 +134,4 @@ uvx --from "semble[mcp]" semble search "your query" .
 ```
 
 ## Recent Changes
-- 2026-06-28 ([#56](https://github.com/2b9sa2owa/okffs/issues/56)): Implements Tier 1 + Tier 2 of the auth/setup friction reduction. Token now resolves from GITHUB_TOKEN or falls back to the GitHub CLI (`gh auth token`); owner/repo resolve from GITHUB_OWNER/GITHUB_REP
+- 2026-06-28 ([#56](https://github.com/2b9sa2owa/okffs/issues/56)): Reduced auth/setup friction — token resolves from `GITHUB_TOKEN` or falls back to `gh auth token`; owner/repo auto-detect from the `origin` git remote when env vars are unset.
