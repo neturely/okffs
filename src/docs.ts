@@ -54,7 +54,10 @@ function buildChangelogEntry(ctx: DocsContext): string {
   // excerpt of the (often long) summary — that produced incomplete-looking,
   // ellipsis-ended entries that needed manual cleanup on every PR. truncateAtWord
   // remains only as a safety net for an unusually long title.
-  const title = truncateAtWord((ctx.issueTitle ?? ctx.trigger).replace(/\s+/g, " ").trim(), 120);
+  // Prefer the issue title; fall back to the summary (non-issue triggers like
+  // delete_branch pass a meaningful summary but no title) before the bare trigger.
+  const source = ctx.issueTitle || ctx.summary || ctx.trigger;
+  const title = truncateAtWord(source.replace(/\s+/g, " ").trim(), 120);
   return `- ${title}${ref}`;
 }
 
@@ -142,7 +145,8 @@ function determineUpdates(ctx: DocsContext, base: string): FileUpdate[] {
     const secPath = path.join(base, "SECURITY.md");
     const sec = readFile(secPath);
     if (sec !== null) {
-      const title = truncateAtWord((ctx.issueTitle ?? ctx.trigger).replace(/\s+/g, " ").trim(), 120);
+      const source = ctx.issueTitle || ctx.summary || ctx.trigger;
+      const title = truncateAtWord(source.replace(/\s+/g, " ").trim(), 120);
       const line = `\n- ${isoDate()}${ctx.issueNumber ? ` (#${ctx.issueNumber})` : ""}: ${title}`;
       updates.push({ path: secPath, content: sec.trimEnd() + line, created: false });
     }
