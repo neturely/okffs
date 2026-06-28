@@ -23,6 +23,10 @@ This project is being built in phases. See [CLAUDE.md](CLAUDE.md) for the full r
 | 5 | GitHub Projects v2 (optional) | Planned |
 | 6 | Project site — `okffs.g2mk.dev` | Planned |
 
+## Changelog
+
+See [Releases](https://github.com/2b9sa2owa/okffs/releases) for per-version release notes, or [CHANGELOG.md](CHANGELOG.md) for the full history.
+
 ## Usage with Claude Code
 
 Add okffs to any project by creating a `.mcp.json` in the project root:
@@ -122,7 +126,7 @@ No installation needed. Add the `.mcp.json` and `.env` to your project as shown 
    OKFFS_UPDATE_DOCS=false                        # set to true to auto-update project docs on workflow events
    OKFFS_AUTO_PR=false                            # set to true to open a draft PR when a new issue branch is created
    OKFFS_RESOLVE_THREADS=false                    # set to true to let okffs auto-resolve PR review threads after they're addressed
-   OKFFS_EXCLUDE_DOCS=CLAUDE.md,CONTRIBUTING.md   # comma-separated — valid options: CLAUDE.md, SECURITY.md, CONTRIBUTING.md, CHANGELOG.md
+   OKFFS_EXCLUDE_DOCS=SECURITY.md                 # comma-separated — valid options: CHANGELOG.md, SECURITY.md
    ```
 
 4. Build and point your `.mcp.json` at the local build:

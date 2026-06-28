@@ -6,8 +6,10 @@ See [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 ### Fixed
 - Auto-doc entries are now concise title-based one-liners instead of truncated summary dumps; CLAUDE.md and CONTRIBUTING.md are no longer auto-updated (CHANGELOG.md, plus SECURITY.md when relevant, are the only auto-doc targets) ([#60](https://github.com/2b9sa2owa/okffs/issues/60)).
+- Corrected the stale `OKFFS_EXCLUDE_DOCS` example in the README (valid options are `CHANGELOG.md`, `SECURITY.md`) ([#62](https://github.com/2b9sa2owa/okffs/issues/62)).
 
 ### Added
+- A Changelog section in the README linking to Releases and `CHANGELOG.md` ([#62](https://github.com/2b9sa2owa/okffs/issues/62)).
 - PR review-response workflow: new `list_pr_review_comments`, `reply_to_review_comment`, and `resolve_review_thread` tools, plus an `address_pr_review` MCP prompt (slash command) that reads a PR's review comments, fixes them, replies per thread, and posts a summary. Thread resolution is gated by the new `OKFFS_RESOLVE_THREADS` env var (default off) ([#58](https://github.com/2b9sa2owa/okffs/issues/58)).
 - Reduced auth/setup friction: token resolves from `GITHUB_TOKEN` or falls back to `gh auth token`, and owner/repo auto-detect from the `origin` git remote when env vars are unset ([#56](https://github.com/2b9sa2owa/okffs/issues/56)).
 
