@@ -126,7 +126,7 @@ When `OKFFS_IDENTIFIER` is set, a project-scoped prefix is inserted: `{issue-num
 ## Local dev vs published package
 
 - **okffs dev repo** — `.mcp.json` points at local build: `{ "command": "node", "args": ["dist/index.js"] }`
-- **Consumer repos** — `.mcp.json` uses published package: `{ "command": "npx", "args": ["okffs@latest"] }`
+- **Consumer repos** — `.mcp.json` uses published package: `{ "command": "npx", "args": ["@neturely/okffs@latest"] }`
 - New tools won't appear in consumer repos until a new version is published to npm.
 - After any build change in the okffs repo, restart Claude Code or run `/mcp` to pick up the updated `dist/index.js`.
 
