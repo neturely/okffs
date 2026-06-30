@@ -5,6 +5,12 @@ See [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-06-30
+### Changed
+- Migrated the project to the `neturely` GitHub organization; updated repository, homepage, and documentation links accordingly.
+- Renamed the npm package from `okffs` to the scoped `@neturely/okffs` (published publicly via `publishConfig.access`). The unscoped `okffs` package is deprecated — install `@neturely/okffs` going forward.
+- README: removed the "Work in progress" banner and led the auth docs with the fine-grained PAT (classic PAT demoted to a fallback).
+
 ## [0.2.0] - 2026-06-28
 ### Fixed
 - The MCP server now reports the real package version instead of a hard-coded `0.0.1`.
@@ -47,7 +53,8 @@ See [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `create_pull_request` commits the updated CHANGELOG onto the branch and pushes the branch before opening the PR, with non-blocking error handling ([#38](https://github.com/2b9sa2owa/okffs/issues/38)).
 - All git operations now run via `execFileSync` with argument arrays (no shell), removing command-injection risk from branch names and commit hints; tools also checkout the target branch before committing/pushing and restore the original branch afterward.
 
-[Unreleased]: https://github.com/2b9sa2owa/okffs/compare/v0.2.0...HEAD
-[0.2.0]: https://github.com/2b9sa2owa/okffs/compare/v0.1.6...v0.2.0
-[0.1.6]: https://github.com/2b9sa2owa/okffs/compare/v0.1.5...v0.1.6
-[0.1.5]: https://github.com/2b9sa2owa/okffs/compare/v0.1.4...v0.1.5
+[Unreleased]: https://github.com/neturely/okffs/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/neturely/okffs/compare/v0.2.0...v0.2.1
+[0.2.0]: https://github.com/neturely/okffs/compare/v0.1.6...v0.2.0
+[0.1.6]: https://github.com/neturely/okffs/compare/v0.1.5...v0.1.6
+[0.1.5]: https://github.com/neturely/okffs/compare/v0.1.4...v0.1.5
