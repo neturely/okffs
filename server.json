@@ -1,0 +1,41 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.neturely/okffs",
+  "title": "okffs",
+  "description": "MCP server connecting Claude Code to GitHub for an issue to branch to PR to close workflow.",
+  "websiteUrl": "https://github.com/neturely/okffs#readme",
+  "repository": {
+    "url": "https://github.com/neturely/okffs",
+    "source": "github"
+  },
+  "version": "0.2.2",
+  "packages": [
+    {
+      "registryType": "npm",
+      "registryBaseUrl": "https://registry.npmjs.org",
+      "identifier": "@neturely/okffs",
+      "version": "0.2.2",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "GITHUB_TOKEN",
+          "description": "GitHub PAT (fine-grained recommended). Falls back to `gh auth token` if unset.",
+          "isRequired": false,
+          "isSecret": true
+        },
+        {
+          "name": "GITHUB_OWNER",
+          "description": "Target repo owner. Auto-detected from the git origin remote if unset.",
+          "isRequired": false
+        },
+        {
+          "name": "GITHUB_REPO",
+          "description": "Target repo name. Auto-detected from the git origin remote if unset.",
+          "isRequired": false
+        }
+      ]
+    }
+  ]
+}

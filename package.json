@@ -1,6 +1,7 @@
 {
   "name": "@neturely/okffs",
-  "version": "0.2.1",
+  "version": "0.2.2",
+  "mcpName": "io.github.neturely/okffs",
   "description": "MCP server that connects Claude Code to GitHub — create and manage issues and branches without leaving your editor.",
   "type": "module",
   "main": "dist/index.js",
