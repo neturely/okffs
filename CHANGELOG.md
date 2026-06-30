@@ -5,6 +5,10 @@ See [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-06-30
+### Added
+- Published to the official MCP Registry (`io.github.neturely/okffs`): added `server.json` and an `mcpName` field to `package.json` for registry package-ownership verification.
+
 ## [0.2.1] - 2026-06-30
 ### Changed
 - Migrated the project to the `neturely` GitHub organization; updated repository, homepage, and documentation links accordingly.
@@ -53,7 +57,8 @@ See [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `create_pull_request` commits the updated CHANGELOG onto the branch and pushes the branch before opening the PR, with non-blocking error handling ([#38](https://github.com/2b9sa2owa/okffs/issues/38)).
 - All git operations now run via `execFileSync` with argument arrays (no shell), removing command-injection risk from branch names and commit hints; tools also checkout the target branch before committing/pushing and restore the original branch afterward.
 
-[Unreleased]: https://github.com/neturely/okffs/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/neturely/okffs/compare/v0.2.2...HEAD
+[0.2.2]: https://github.com/neturely/okffs/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/neturely/okffs/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/neturely/okffs/compare/v0.1.6...v0.2.0
 [0.1.6]: https://github.com/neturely/okffs/compare/v0.1.5...v0.1.6

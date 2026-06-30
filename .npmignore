@@ -1,4 +1,5 @@
 src/
+server.json
 .env
 .env.example
 .mcp.json
