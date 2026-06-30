@@ -4,7 +4,7 @@ Thanks for your interest in contributing to okffs. This document covers how to r
 
 ## Reporting bugs
 
-Open an issue on [GitHub](https://github.com/2b9sa2owa/okffs/issues) with:
+Open an issue on [GitHub](https://github.com/neturely/okffs/issues) with:
 - A clear title describing the problem
 - Steps to reproduce
 - Expected vs actual behaviour
@@ -18,7 +18,7 @@ Open an issue with the `enhancement` label. Describe the use case and how it fit
 
 1. Fork and clone the repo:
    ```bash
-   git clone https://github.com/2b9sa2owa/okffs.git
+   git clone https://github.com/neturely/okffs.git
    cd okffs
    npm install
    ```

@@ -1,7 +1,5 @@
 # okffs
 
-> **Work in progress.**
-
 **okffs** is a TypeScript/Node.js [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server that connects Claude Code to GitHub, enabling a full **issue → branch → merge → close** workflow. Discuss tasks in Claude.ai, then push them to GitHub as issues and branches in one shot via Claude Code.
 
 ## Stack
@@ -25,7 +23,7 @@ This project is being built in phases. See [CLAUDE.md](CLAUDE.md) for the full r
 
 ## Changelog
 
-See [Releases](https://github.com/2b9sa2owa/okffs/releases) for per-version release notes, or [CHANGELOG.md](CHANGELOG.md) for the full history.
+See [Releases](https://github.com/neturely/okffs/releases) for per-version release notes, or [CHANGELOG.md](CHANGELOG.md) for the full history.
 
 ## Usage with Claude Code
 
@@ -36,7 +34,7 @@ Add okffs to any project by creating a `.mcp.json` in the project root:
   "mcpServers": {
     "okffs": {
       "command": "npx",
-      "args": ["okffs@latest"]
+      "args": ["@neturely/okffs@latest"]
     }
   }
 }
@@ -84,8 +82,9 @@ Claude infers appropriate labels (`bug`, `enhancement`, etc.) from the issue tit
 ### Prerequisites
 
 - Node.js (LTS) and npm
-- A GitHub Personal Access Token with fine-grained permissions — [create one here](https://github.com/settings/tokens)
+- A GitHub Personal Access Token. **Fine-grained (recommended, least privilege)** — [create one here](https://github.com/settings/personal-access-tokens/new) scoped to the target repo.
   - Required: Issues (read/write), Contents (read/write), Metadata (read), Pull requests (read/write), Administration (read/write)
+  - A classic PAT with the `repo` scope also works but grants broad access across all your repos — prefer fine-grained.
 
 ### Quick start (recommended)
 
@@ -96,7 +95,7 @@ No installation needed. Add the `.mcp.json` and `.env` to your project as shown 
 1. Clone the repo and install dependencies:
 
    ```bash
-   git clone https://github.com/2b9sa2owa/okffs.git
+   git clone https://github.com/neturely/okffs.git
    cd okffs
    npm install
    ```
@@ -227,7 +226,7 @@ OKFFS_EXCLUDE_DOCS=SECURITY.md
 
 ## Publishing to npm
 
-Requires an npm account with maintainer access to the `okffs` package.
+Requires an npm account with maintainer access to the `@neturely/okffs` package (publishes publicly via `publishConfig.access`).
 
 1. **Prepare the release** with the `prepare_release` tool (ask Claude, e.g. *"prepare a release"* or *"prepare release 0.2.0"*). It bumps `package.json` + `package-lock.json`, rolls the CHANGELOG, and opens a release PR. Review and merge it (then merge to `main`).
 2. **Tag and push** the version:
