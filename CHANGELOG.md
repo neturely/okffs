@@ -5,6 +5,7 @@ See [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 ### Changed
+- Phase 5: document Projects v2 integration (env vars, token scope, conversational flow) ([#85](https://github.com/neturely/okffs/issues/85))
 - Phase 5: enrich list_issues with current project column ([#84](https://github.com/neturely/okffs/issues/84))
 - Phase 5: Projects v2 GraphQL foundation — config, projects.ts, field discovery ([#81](https://github.com/neturely/okffs/issues/81))
 ### Added
