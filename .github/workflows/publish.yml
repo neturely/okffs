@@ -1,13 +1,47 @@
-name: Publish to npm
+name: Publish to npm and MCP Registry
 
 on:
   push:
     tags:
-      - 'v*.*.*'
+      - 'v*'
+  workflow_dispatch: {}   # manual: runs the verify-only job (publishes nothing)
 
 jobs:
-  publish:
+  # Manual credential check — proves NPM_TOKEN scope and MCP Registry OIDC trust
+  # WITHOUT publishing anything. Run this before cutting a real tag.
+  verify:
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write   # required for mcp-publisher's github-oidc auth
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 'lts/*'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Check npm auth + package access (no publish)
+        run: |
+          echo "Authenticated to npm as: $(npm whoami)"
+          npm access list packages @neturely 2>/dev/null || echo "note: could not list scope packages (first publish, or token lacks read) — whoami above is the key check"
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Install mcp-publisher
+        run: curl -L "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz" | tar xz mcp-publisher
+
+      - name: Verify MCP Registry OIDC login (no publish)
+        run: ./mcp-publisher login github-oidc
+
+  publish:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write   # required for mcp-publisher's github-oidc auth (no stored token)
     steps:
       - uses: actions/checkout@v4
 
@@ -22,7 +56,66 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Resolve version, dist-tag, prerelease flag
+        id: pkg
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          # A prerelease version contains a hyphen (e.g. 0.3.0-rc.0). Prereleases
+          # publish to the `next` dist-tag so they NEVER move @latest, and skip
+          # the MCP Registry (which should track stable releases only).
+          if [[ "$version" == *-* ]]; then
+            echo "prerelease=true"  >> "$GITHUB_OUTPUT"
+            echo "dist_tag=next"    >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+            echo "dist_tag=latest"  >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Verify tag matches package.json version
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          pkg="${{ steps.pkg.outputs.version }}"
+          if [ "$tag" != "$pkg" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match package.json version $pkg — refusing to publish."
+            exit 1
+          fi
+          echo "Tag matches package.json ($pkg); publishing to dist-tag '${{ steps.pkg.outputs.dist_tag }}'."
+
       - name: Publish to npm
-        run: npm publish
+        run: npm publish --tag "${{ steps.pkg.outputs.dist_tag }}"
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      # ---- MCP Registry (io.github.neturely/okffs) — stable releases only ----
+      - name: Sync server.json version to package.json
+        if: steps.pkg.outputs.prerelease == 'false'
+        run: |
+          node -e "const fs=require('fs');const v=require('./package.json').version;const s=require('./server.json');s.version=v;s.packages.forEach(p=>p.version=v);fs.writeFileSync('server.json',JSON.stringify(s,null,2)+'\n')"
+
+      - name: Wait for npm to expose mcpName (registry verification reads it)
+        if: steps.pkg.outputs.prerelease == 'false'
+        run: |
+          for i in $(seq 1 30); do
+            got="$(npm view "@neturely/okffs@${{ steps.pkg.outputs.version }}" mcpName 2>/dev/null || true)"
+            if [ "$got" = "io.github.neturely/okffs" ]; then echo "mcpName visible ✓"; exit 0; fi
+            echo "waiting for npm propagation ($i/30)..."; sleep 10
+          done
+          echo "::error::mcpName not visible on npm after timeout; registry publish would fail"; exit 1
+
+      - name: Install mcp-publisher
+        if: steps.pkg.outputs.prerelease == 'false'
+        run: |
+          curl -L "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz" | tar xz mcp-publisher
+
+      - name: Authenticate to MCP Registry via GitHub OIDC
+        if: steps.pkg.outputs.prerelease == 'false'
+        run: ./mcp-publisher login github-oidc
+
+      - name: Publish to MCP Registry
+        if: steps.pkg.outputs.prerelease == 'false'
+        run: ./mcp-publisher publish
+
+      - name: Prerelease summary
+        if: steps.pkg.outputs.prerelease == 'true'
+        run: echo "::notice::Prerelease ${{ steps.pkg.outputs.version }} published to npm dist-tag 'next'. MCP Registry publish skipped (stable-only)."

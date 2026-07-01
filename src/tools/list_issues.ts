@@ -9,6 +9,8 @@ import {
   repo,
   type IssueRelationships,
 } from "../github.js";
+import { config } from "../config.js";
+import { getProjectStatusByIssueNumber } from "../projects.js";
 
 export const name = "list_issues";
 
@@ -19,6 +21,17 @@ export const inputSchema = z.object({});
 
 export async function handler(_input: z.infer<typeof inputSchema>) {
   const [issues, prs] = await Promise.all([listIssues(), listOpenPullRequests()]);
+
+  // Current board column per issue. Non-fatal: if the project fetch fails (e.g.
+  // token lacks Projects permission), the listing still renders without it.
+  let projectStatus = new Map<number, string>();
+  if (config.projectEnabled && config.projectId) {
+    try {
+      projectStatus = await getProjectStatusByIssueNumber();
+    } catch (err) {
+      console.warn("[okffs] Failed to fetch project statuses:", err instanceof Error ? err.message : err);
+    }
+  }
 
   if (issues.length === 0) {
     return {
@@ -58,6 +71,11 @@ export async function handler(_input: z.infer<typeof inputSchema>) {
 
     if (pr) {
       lines.push(`    PR:     #${pr.number} (${pr.draft ? "draft" : "open"})  ${pr.html_url}`);
+    }
+
+    const status = projectStatus.get(issue.number);
+    if (status) {
+      lines.push(`    project: ${status}`);
     }
 
     // Relationships as a small tree under the issue.

@@ -5,6 +5,18 @@ See [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-07-01
+### Changed
+- Harden publish workflow: prerelease-safe npm tag + verify-only job ([#95](https://github.com/neturely/okffs/issues/95))
+- Phase 5: document Projects v2 integration (env vars, token scope, conversational flow) ([#85](https://github.com/neturely/okffs/issues/85))
+- Phase 5: enrich list_issues with current project column ([#84](https://github.com/neturely/okffs/issues/84))
+- Phase 5: Projects v2 GraphQL foundation — config, projects.ts, field discovery ([#81](https://github.com/neturely/okffs/issues/81))
+### Added
+- Automated MCP Registry publish on tag via GitHub OIDC — a `vX.Y.Z` tag now publishes to both npm and the MCP Registry, with no stored registry token ([#79](https://github.com/neturely/okffs/pull/79))
+- Phase 5: clearer create_issue warning when Priority is an org Issue Field ([#93](https://github.com/neturely/okffs/issues/93))
+- Phase 5: add update_project_status tool (Backlog/Ready/In Progress/Review) ([#82](https://github.com/neturely/okffs/issues/82))
+- Phase 5: create_issue auto-add to board + priority field ([#83](https://github.com/neturely/okffs/issues/83))
+
 ## [0.2.2] - 2026-06-30
 ### Added
 - Published to the official MCP Registry (`io.github.neturely/okffs`): added `server.json` and an `mcpName` field to `package.json` for registry package-ownership verification.
@@ -57,7 +69,8 @@ See [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `create_pull_request` commits the updated CHANGELOG onto the branch and pushes the branch before opening the PR, with non-blocking error handling ([#38](https://github.com/2b9sa2owa/okffs/issues/38)).
 - All git operations now run via `execFileSync` with argument arrays (no shell), removing command-injection risk from branch names and commit hints; tools also checkout the target branch before committing/pushing and restore the original branch afterward.
 
-[Unreleased]: https://github.com/neturely/okffs/compare/v0.2.2...HEAD
+[Unreleased]: https://github.com/neturely/okffs/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/neturely/okffs/compare/v0.2.2...v0.3.0
 [0.2.2]: https://github.com/neturely/okffs/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/neturely/okffs/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/neturely/okffs/compare/v0.1.6...v0.2.0
