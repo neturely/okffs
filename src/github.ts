@@ -146,7 +146,7 @@ export async function createIssue(
   assignees?: string[],
   labels?: string[],
   milestone?: number
-): Promise<{ number: number; html_url: string }> {
+): Promise<{ number: number; html_url: string; node_id: string }> {
   return request(`/repos/${owner}/${repo}/issues`, {
     method: "POST",
     body: JSON.stringify({ title, body, assignees, labels, ...(milestone !== undefined && { milestone }) }),
