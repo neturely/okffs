@@ -54,10 +54,24 @@ export async function handler(input: z.infer<typeof inputSchema>) {
         if (meta.priorityFieldId && optionId) {
           await setProjectFieldValue(itemId, meta.priorityFieldId, optionId);
           priorityApplied = input.priority;
-        } else {
-          const opts = [...meta.priorityOptions.keys()].join(", ") || "none";
+        } else if (!meta.priorityFieldId) {
           console.warn(
-            `[okffs] Could not set priority "${input.priority}" — board Priority options are: ${opts}.`
+            `[okffs] Priority "${input.priority}" not set: the board has no Priority field.`
+          );
+        } else if (meta.priorityOptions.size === 0) {
+          // Priority field exists but exposes no options via the project API —
+          // the hallmark of a GitHub org-level Issue Field (options live under
+          // organization.issueFields, not on the project single-select field).
+          // Full read/write support is tracked in #91.
+          console.warn(
+            `[okffs] Priority "${input.priority}" not set: the board's Priority field looks like an ` +
+              `org-level Issue Field, whose options aren't settable via the project API yet (see #91). ` +
+              `Set it manually in the board UI for now.`
+          );
+        } else {
+          const opts = [...meta.priorityOptions.keys()].join(", ");
+          console.warn(
+            `[okffs] Could not set priority "${input.priority}" — no matching option. Board Priority options: ${opts}.`
           );
         }
       }
