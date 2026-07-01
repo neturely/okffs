@@ -94,7 +94,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-async function graphqlRequest<T>(query: string, variables: Record<string, unknown>): Promise<T> {
+export async function graphqlRequest<T>(query: string, variables: Record<string, unknown>): Promise<T> {
   const res = await fetch(`${BASE}/graphql`, {
     method: "POST",
     headers: {
