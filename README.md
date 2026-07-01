@@ -18,7 +18,7 @@ This project is being built in phases. See [CLAUDE.md](CLAUDE.md) for the full r
 | 2 | Bulk creation — `create_issues_from_list` | **Complete** |
 | 3 | Claude.ai bridge | Skipped — not required |
 | 4 | Auto-close on merge — `create_pull_request`, `commit_and_update` | **Complete** |
-| 5 | GitHub Projects v2 (optional) | Planned |
+| 5 | GitHub Projects v2 (optional) | Done |
 | 6 | Project site — `okffs.g2mk.dev` | Planned |
 
 ## Changelog
@@ -127,6 +127,9 @@ No installation needed. Add the `.mcp.json` and `.env` to your project as shown 
    OKFFS_RESOLVE_THREADS=false                    # set to true to let okffs auto-resolve PR review threads after they're addressed
    OKFFS_UPDATE_GUIDANCE=false                    # set to true to nudge keeping CLAUDE.md in sync with functionality changes at PR time
    OKFFS_EXCLUDE_DOCS=SECURITY.md                 # comma-separated — valid options: CHANGELOG.md, SECURITY.md
+   OKFFS_PROJECT_ENABLED=false                    # set to true to enable the GitHub Projects v2 integration
+   OKFFS_PROJECT_ID=                              # the Project's GraphQL node ID (e.g. PVT_kwHO...); required when enabled
+   OKFFS_PROJECT_AUTO_ADD=false                   # fallback: create_issue adds new issues to the board (skip if your board auto-adds natively)
    ```
 
 4. Build and point your `.mcp.json` at the local build:
@@ -164,6 +167,7 @@ No installation needed. Add the `.mcp.json` and `.env` to your project as shown 
 | `reply_to_review_comment` | Replies to an inline PR review comment thread by id. |
 | `resolve_review_thread` | Marks a PR review thread resolved. Gated by `OKFFS_RESOLVE_THREADS` — declines unless that's enabled, leaving threads for you to resolve. |
 | `prepare_release` | Bumps the version (`package.json` + `package-lock.json`), rolls the CHANGELOG (`[Unreleased]` → a dated version section), commits on a release branch, and opens a PR. Two-step confirm; takes an explicit `version` or `bump` level (inferred if omitted). Does **not** tag or publish. |
+| `update_project_status` | Moves an issue between GitHub Project board columns (`Backlog`, `Ready`, `In Progress`, `Review`) via GraphQL. `Done` is intentionally excluded — native GitHub automation owns it on merge/close. Requires `OKFFS_PROJECT_ENABLED`. |
 | `delete_issue` | Closes an issue **and** deletes its matching branch. Destructive — requires `confirmed: true`. |
 | `delete_branch` | Deletes a branch **and** closes its matching issue. Destructive — requires `confirmed: true`. |
 
@@ -204,6 +208,42 @@ Use `OKFFS_EXCLUDE_DOCS` to exclude specific files per repo (valid options: `CHA
 ```env
 OKFFS_EXCLUDE_DOCS=SECURITY.md
 ```
+
+## GitHub Projects v2
+
+okffs can keep a GitHub **Projects v2** board in step with your issue workflow. It's **opt-in** and has zero overhead when off.
+
+Enable it in `.env`:
+
+```
+OKFFS_PROJECT_ENABLED=true
+OKFFS_PROJECT_ID=PVT_kwHO...        # the board's GraphQL node ID
+OKFFS_PROJECT_AUTO_ADD=false        # see "auto-add vs native automation" below
+```
+
+Once enabled:
+
+- **`list_issues`** shows each issue's current board column (e.g. `project: In Progress`).
+- **`update_project_status`** moves an issue between `Backlog`, `Ready`, `In Progress`, and `Review`.
+
+### How Claude drives status transitions
+
+Column moves are **conversational**, not automatic. Claude offers them at the natural moments in the workflow — after `create_issue` puts an issue on the board it asks whether to move it to **In Progress** and start; when a PR goes up it can move the issue to **Review**. You stay in control; okffs just provides the `update_project_status` plumbing.
+
+**`Done` is intentionally not settable** by okffs — it's owned by GitHub's **native board automation** (the built-in "Item closed / PR merged → Done" workflow). Since okffs always writes `Closes #N` into PRs, merging closes the issue and native automation moves the card to Done. This avoids two systems fighting over the terminal state.
+
+### Auto-add vs native automation
+
+`OKFFS_PROJECT_AUTO_ADD` is a **fallback**. GitHub Projects can natively auto-add issues to a board (Project → Workflows → "Auto-add to project"). If you use that, leave `OKFFS_PROJECT_AUTO_ADD=false` — okffs doesn't need to add issues itself. Only set it to `true` if your board has no native auto-add and you want `create_issue` to place new issues on the board (optionally with an initial `priority`).
+
+### Token permission
+
+Projects v2 has no REST API, so okffs uses GraphQL, which needs a Projects-capable token:
+
+- **Fine-grained PAT** → *Organization permissions* → **Projects: Read and write**
+- **Classic PAT** → the **`project`** scope
+
+Without it, Projects calls fail with a clear `[okffs]` 403 error naming exactly what's missing. Reads/writes to an **org-level** board require the token to be able to see that org's projects.
 
 ## Conventions
 
