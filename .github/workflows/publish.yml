@@ -16,9 +16,9 @@ jobs:
       contents: read
       id-token: write   # required for mcp-publisher's github-oidc auth
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 'lts/*'
           registry-url: 'https://registry.npmjs.org'
@@ -43,9 +43,9 @@ jobs:
       contents: read
       id-token: write   # required for mcp-publisher's github-oidc auth (no stored token)
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 'lts/*'
           registry-url: 'https://registry.npmjs.org'
