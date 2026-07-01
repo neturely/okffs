@@ -2,6 +2,7 @@ import { z } from "zod";
 import { createIssue, updateIssueBody, getDefaultBranch, getRef, createBranch, buildBranchName, createDraftPullRequest } from "../github.js";
 import { config } from "../config.js";
 import { git, currentBranch } from "../git.js";
+import { addIssueToProject, getProjectMetadata, setProjectFieldValue } from "../projects.js";
 
 export const name = "create_issue";
 
@@ -14,6 +15,9 @@ export const inputSchema = z.object({
   assignees: z.array(z.string()).optional().describe("GitHub usernames to assign"),
   labels: z.array(z.string()).optional().describe("Labels to apply e.g. bug, feature"),
   milestone: z.number().int().optional().describe("Milestone number to assign"),
+  priority: z.string().optional().describe(
+    "Optional Project board Priority (e.g. High, Medium, Low) — matched against the board's Priority field options. Only applied when OKFFS_PROJECT_AUTO_ADD=true and the board has a Priority field."
+  ),
 });
 
 export async function handler(input: z.infer<typeof inputSchema>) {
@@ -32,6 +36,35 @@ export async function handler(input: z.infer<typeof inputSchema>) {
 
   const updatedBody = `${input.description}\n\n**Branch:** \`${branchName}\``;
   await updateIssueBody(issue.number, updatedBody);
+
+  // Add the issue to the configured Project board (fallback for users without
+  // native board automation). Non-fatal, mirroring the autoPR block below: any
+  // failure warns with an [okffs] prefix and never blocks issue creation.
+  let addedToBoard = false;
+  let priorityApplied: string | null = null;
+  if (config.projectAutoAdd && config.projectEnabled) {
+    try {
+      const itemId = await addIssueToProject(issue.node_id);
+      addedToBoard = true;
+      if (input.priority) {
+        const meta = await getProjectMetadata();
+        const optionId = meta.priorityFieldId
+          ? meta.priorityOptions.get(input.priority)
+          : undefined;
+        if (meta.priorityFieldId && optionId) {
+          await setProjectFieldValue(itemId, meta.priorityFieldId, optionId);
+          priorityApplied = input.priority;
+        } else {
+          const opts = [...meta.priorityOptions.keys()].join(", ") || "none";
+          console.warn(
+            `[okffs] Could not set priority "${input.priority}" — board Priority options are: ${opts}.`
+          );
+        }
+      }
+    } catch (err) {
+      console.warn("[okffs] Failed to add issue to project board:", err instanceof Error ? err.message : err);
+    }
+  }
 
   let draftPRUrl: string | null = null;
   if (config.autoPR) {
@@ -88,12 +121,28 @@ export async function handler(input: z.infer<typeof inputSchema>) {
     lines.push(`Labels: ${resolvedLabels.join(", ")}${source}`);
   }
 
+  if (addedToBoard) {
+    lines.push(
+      `Board: added to the project${priorityApplied ? ` (priority: ${priorityApplied})` : ""}`
+    );
+  }
+
   lines.push(
     ``,
     `To start work:`,
     `  git fetch origin`,
     `  git checkout ${branchName}`,
   );
+
+  // Conversational nudge: prompt the host LLM to offer moving the issue into
+  // the "In Progress" column via update_project_status once work begins.
+  if (addedToBoard) {
+    lines.push(
+      ``,
+      `This issue is on the board in its default column. Want me to move it to "In Progress" and start? ` +
+      `(I can call update_project_status for #${issue.number}.)`
+    );
+  }
 
   if (config.promptForMetadata && !input.assignees && !input.labels) {
     lines.push(
