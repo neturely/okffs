@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 See [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+
+## [0.3.0] - 2026-07-01
 ### Changed
 - Harden publish workflow: prerelease-safe npm tag + verify-only job ([#95](https://github.com/neturely/okffs/issues/95))
 - Phase 5: document Projects v2 integration (env vars, token scope, conversational flow) ([#85](https://github.com/neturely/okffs/issues/85))
@@ -67,7 +69,8 @@ See [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `create_pull_request` commits the updated CHANGELOG onto the branch and pushes the branch before opening the PR, with non-blocking error handling ([#38](https://github.com/2b9sa2owa/okffs/issues/38)).
 - All git operations now run via `execFileSync` with argument arrays (no shell), removing command-injection risk from branch names and commit hints; tools also checkout the target branch before committing/pushing and restore the original branch afterward.
 
-[Unreleased]: https://github.com/neturely/okffs/compare/v0.2.2...HEAD
+[Unreleased]: https://github.com/neturely/okffs/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/neturely/okffs/compare/v0.2.2...v0.3.0
 [0.2.2]: https://github.com/neturely/okffs/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/neturely/okffs/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/neturely/okffs/compare/v0.1.6...v0.2.0
