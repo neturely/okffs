@@ -45,7 +45,7 @@ When `OKFFS_IDENTIFIER` is set, a project-scoped prefix is inserted: `{issue-num
 - TypeScript MCP server scaffolded.
 - PAT auth via `.env` (`GITHUB_TOKEN`, `GITHUB_OWNER`, `GITHUB_REPO`).
 - `.env` is loaded automatically via `dotenv` from `process.cwd()` — no `--env-file` flag needed in `.mcp.json`.
-- Tools: `create_issue`, `list_issues`, `close_issue`, `delete_issue`, `delete_branch`, `get_issue`, `comment_issue`, `link_issues`, `create_issues_from_list`, `plan`, `create_pull_request`, `commit_and_update`, `list_pr_review_comments`, `reply_to_review_comment`, `resolve_review_thread`, `prepare_release`.
+- Tools: `create_issue`, `list_issues`, `close_issue`, `delete_issue`, `delete_branch`, `get_issue`, `comment_issue`, `link_issues`, `create_issues_from_list`, `plan`, `create_pull_request`, `commit_and_update`, `list_pr_review_comments`, `reply_to_review_comment`, `resolve_review_thread`, `prepare_release`, `update_project_status`.
 - Prompts (MCP `prompts` capability, surfaced as slash commands): `address_pr_review` — read a PR's review comments, fix the valid ones, reply per thread, post a summary, and optionally resolve threads; `update_guidance` — review an issue's changes and intelligently maintain the bounded `## Project Guidance (okffs usage)` section of CLAUDE.md to reflect new/changed functionality (substantive, marker-delimited; never touches the user's other content).
 - `create_issue` auto-creates a branch, embeds the branch name in the issue body, applies default assignees/labels from `.env`, infers labels from title/description and merges with `OKFFS_DEFAULT_LABELS`. Supports optional `assignees`, `labels`, `milestone`. If a relationship is mentioned (blocked by, blocking, parent), automatically calls `link_issues` after creation. If `OKFFS_AUTO_PR=true`, pushes an empty init commit to the branch (capturing and restoring the current branch) and opens a draft PR immediately.
 - `create_issues_from_list` accepts a list of tasks and creates all issues + branches in one shot. Two-step confirmation. Per-task `labels`, `assignees`, and `milestone` supported.
@@ -71,6 +71,10 @@ When `OKFFS_IDENTIFIER` is set, a project-scoped prefix is inserted: `{issue-num
 - `OKFFS_AUTO_PR` — set to `true` to open a draft PR when a new issue branch is created (via `create_issue`). Default `false`.
 - `OKFFS_RESOLVE_THREADS` — set to `true` to let okffs auto-resolve PR review threads after they're addressed (via `resolve_review_thread`). Default `false` — threads are left open for the user to resolve.
 - `OKFFS_UPDATE_GUIDANCE` — set to `true` to have `create_pull_request` nudge the agent to keep CLAUDE.md in sync with new/changed functionality (via the `update_guidance` prompt). Default `false`. The prompt is always available regardless.
+- `update_project_status` moves an issue between GitHub Projects v2 board columns (`Backlog`, `Ready`, `In Progress`, `Review`) via GraphQL. `Done` is intentionally excluded — it is owned by native GitHub board automation on merge/close. Guarded by `OKFFS_PROJECT_ENABLED`; resolves the board's field/option node IDs at runtime (no hardcoding). Driven conversationally: after `create_issue` places an issue on the board, the agent offers to move it to `In Progress` and start.
+- `OKFFS_PROJECT_ENABLED` — set to `true` to enable the Projects v2 integration (`list_issues` shows each issue's board column; `update_project_status` works). Default `false`; zero overhead when unset.
+- `OKFFS_PROJECT_ID` — the Project's GraphQL node ID (e.g. `PVT_kwHO...`). Required when the feature is enabled.
+- `OKFFS_PROJECT_AUTO_ADD` — set to `true` (fallback only) to have `create_issue` add new issues to the board via GraphQL, optionally setting a `priority`. Default `false` — leave off if your board uses GitHub's native auto-add workflow. Non-fatal: failures warn `[okffs]` and never block issue creation. Projects v2 needs a Projects-capable token (fine-grained: org "Projects: Read and write"; classic: `project` scope); missing permission surfaces a clear `[okffs]` 403 error.
 
 ### Phase 2 — Bulk creation ✓ Complete
 
@@ -95,11 +99,14 @@ When `OKFFS_IDENTIFIER` is set, a project-scoped prefix is inserted: `{issue-num
 - GitHub natively closes the issue on merge via `Closes #N` — no webhook infrastructure needed. Note: this only fires when merging into the repo's default branch. With a `develop`-based workflow (`OKFFS_BASE_BRANCH=develop`), merge to `develop` does not auto-close; use `close_issue`.
 - Edge case: if the branch has no commits ahead of the base branch, a friendly comment is posted instead of erroring.
 
-### Phase 5 — GitHub Projects v2 (optional, later)
+### Phase 5 — GitHub Projects v2 ✓ Complete
 
-- Add issues to a GitHub Project board on creation.
-- Update status fields as work progresses.
-- Requires the GraphQL API.
+- Opt-in via `OKFFS_PROJECT_ENABLED`; org-level board addressed by `OKFFS_PROJECT_ID` (GraphQL node ID). Zero overhead when disabled.
+- Projects v2 has no REST API — all board work goes through GraphQL, reusing the shared `graphqlRequest` helper (exported from `github.ts`). Projects code lives in `src/projects.ts`; field and single-select option node IDs are **discovered at runtime and memoized**, never hardcoded (they differ per board).
+- `create_issue` — when `OKFFS_PROJECT_AUTO_ADD=true`, adds the new issue to the board and optionally sets a `priority` (matched against the board's Priority options). Non-fatal, mirroring the `autoPR` block: any failure warns `[okffs]` and never blocks issue creation. `OKFFS_PROJECT_AUTO_ADD` is a fallback for boards without GitHub's native auto-add workflow.
+- `update_project_status` — moves an issue between `Backlog`, `Ready`, `In Progress`, `Review`. **`Done` is intentionally excluded** — native GitHub board automation owns it on PR merge / issue close (okffs already writes `Closes #N`). Driven conversationally by the agent at the natural workflow moments.
+- `list_issues` — surfaces each issue's current board column (`project: <column>`). Non-fatal: the listing still renders if the Projects fetch fails.
+- Token permission: fine-grained PAT → org "Projects: Read and write"; classic PAT → `project` scope. Missing permission surfaces a clear `[okffs]` 403 error.
 
 ### Phase 6 — Project site
 
@@ -121,7 +128,7 @@ When `OKFFS_IDENTIFIER` is set, a project-scoped prefix is inserted: `{issue-num
 - Auth resolution: `GITHUB_TOKEN` if set, otherwise falls back to the GitHub CLI (`gh auth token`). If neither is available, startup fails with a message linking to the one-click PAT page.
 - Repo resolution: `GITHUB_OWNER`/`GITHUB_REPO` if set, otherwise auto-detected by parsing the `origin` git remote of `process.cwd()`. So with `gh` signed in and okffs run inside the target repo, no `.env` is required.
 - Resolution lives in `src/github.ts` (`resolveToken`, `resolveOwnerRepo`); `owner`/`repo` are exported from there and reused (e.g. `docs.ts`) so detected values flow everywhere.
-- Optional: `OKFFS_DEFAULT_ASSIGNEES` (comma-separated), `OKFFS_DEFAULT_LABELS` (comma-separated), `OKFFS_PROMPT_METADATA` (set to `false` to silence the tip), `OKFFS_BASE_BRANCH` (branch to create from; defaults to repo default), `OKFFS_IDENTIFIER` (optional project-scoped branch prefix: `{number}-{identifier}-{slug}`), `OKFFS_UPDATE_DOCS` (set to `true` to enable auto doc updates), `OKFFS_AUTO_PR` (set to `true` to open a draft PR at branch-creation time via `create_issue`), `OKFFS_RESOLVE_THREADS` (set to `true` to auto-resolve PR review threads after addressing; default leaves them for the user), `OKFFS_UPDATE_GUIDANCE` (set to `true` to nudge keeping CLAUDE.md in sync with functionality changes at PR time), `OKFFS_EXCLUDE_DOCS` (comma-separated filenames to exclude from auto-updates — valid options: `CHANGELOG.md`, `SECURITY.md`).
+- Optional: `OKFFS_DEFAULT_ASSIGNEES` (comma-separated), `OKFFS_DEFAULT_LABELS` (comma-separated), `OKFFS_PROMPT_METADATA` (set to `false` to silence the tip), `OKFFS_BASE_BRANCH` (branch to create from; defaults to repo default), `OKFFS_IDENTIFIER` (optional project-scoped branch prefix: `{number}-{identifier}-{slug}`), `OKFFS_UPDATE_DOCS` (set to `true` to enable auto doc updates), `OKFFS_AUTO_PR` (set to `true` to open a draft PR at branch-creation time via `create_issue`), `OKFFS_RESOLVE_THREADS` (set to `true` to auto-resolve PR review threads after addressing; default leaves them for the user), `OKFFS_UPDATE_GUIDANCE` (set to `true` to nudge keeping CLAUDE.md in sync with functionality changes at PR time), `OKFFS_EXCLUDE_DOCS` (comma-separated filenames to exclude from auto-updates — valid options: `CHANGELOG.md`, `SECURITY.md`), `OKFFS_PROJECT_ENABLED` (set to `true` to enable the GitHub Projects v2 integration), `OKFFS_PROJECT_ID` (the board's GraphQL node ID; required when enabled), `OKFFS_PROJECT_AUTO_ADD` (set to `true` as a fallback to have `create_issue` add issues to the board when your board has no native auto-add).
 
 ## Local dev vs published package
 
