@@ -5,6 +5,7 @@ See [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 ### Changed
+- Phase 5: enrich list_issues with current project column ([#84](https://github.com/neturely/okffs/issues/84))
 - Phase 5: Projects v2 GraphQL foundation — config, projects.ts, field discovery ([#81](https://github.com/neturely/okffs/issues/81))
 ### Added
 - Phase 5: add update_project_status tool (Backlog/Ready/In Progress/Review) ([#82](https://github.com/neturely/okffs/issues/82))
