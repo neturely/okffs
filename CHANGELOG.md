@@ -10,6 +10,7 @@ See [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Phase 5: enrich list_issues with current project column ([#84](https://github.com/neturely/okffs/issues/84))
 - Phase 5: Projects v2 GraphQL foundation — config, projects.ts, field discovery ([#81](https://github.com/neturely/okffs/issues/81))
 ### Added
+- Automated MCP Registry publish on tag via GitHub OIDC — a `vX.Y.Z` tag now publishes to both npm and the MCP Registry, with no stored registry token ([#79](https://github.com/neturely/okffs/pull/79))
 - Phase 5: clearer create_issue warning when Priority is an org Issue Field ([#93](https://github.com/neturely/okffs/issues/93))
 - Phase 5: add update_project_status tool (Backlog/Ready/In Progress/Review) ([#82](https://github.com/neturely/okffs/issues/82))
 - Phase 5: create_issue auto-add to board + priority field ([#83](https://github.com/neturely/okffs/issues/83))
