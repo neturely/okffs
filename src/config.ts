@@ -32,6 +32,14 @@ export const config = {
   // OKFFS_PROJECT_AUTO_ADD=true — fallback for users without native GitHub board
   // automation: create_issue adds the new issue to the board. Off by default.
   projectAutoAdd: process.env.OKFFS_PROJECT_AUTO_ADD === "true",
+  // OKFFS_CLASSIC_PAT=true — a declaration that GITHUB_TOKEN is a classic PAT with
+  // org-admin scope (`admin:org`), which unlocks org-admin-level features that
+  // fine-grained PATs can't reach — currently setting a Priority that is a GitHub
+  // *org-level Issue Field* (#91), via organization.issueFields / setIssueFieldValue.
+  // Off by default. SECURITY: classic `admin:org` tokens are broad (all your repos
+  // + org admin); only enable this if you accept that tradeoff. When off, okffs
+  // skips the org Issue Field API path entirely and tells you to set it manually.
+  classicPat: process.env.OKFFS_CLASSIC_PAT === "true",
   // OKFFS_PROJECT_INITIAL_STATUS — Status column a freshly auto-added issue
   // should land in (e.g. "Backlog"). Set after the draft PR is created so it
   // wins over GitHub's "PR linked to issue" workflow, which would otherwise flip
