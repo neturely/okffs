@@ -10,7 +10,7 @@ Guidance for Claude Code when working in this repository.
 
 - TypeScript / Node.js MCP server
 - GitHub Personal Access Token (PAT) authentication (upgrade to a GitHub App later)
-- Published to npm (package name: `okffs`) and the MCP Registry (`registry.modelcontextprotocol.io`)
+- Published to npm (package name: `@neturely/okffs`) and the MCP Registry (`registry.modelcontextprotocol.io`)
 
 ## Conventions
 
@@ -117,7 +117,7 @@ When `OKFFS_IDENTIFIER` is set, a project-scoped prefix is inserted: `{issue-num
 
 ## Publishing targets
 
-- **npm** — package name: `okffs`
+- **npm** — package name: `@neturely/okffs`
 - **MCP Registry** (`registry.modelcontextprotocol.io`) — via the `mcp-publisher` CLI
 - Listings: `mcp.so`, `smithery.ai`, `glama.ai/mcp`, `punkpeye/awesome-mcp-servers`
 
@@ -150,5 +150,5 @@ uvx --from "semble[mcp]" semble search "your query" .
 ```
 
 ## Recent Changes
-- 2026-06-28 ([#58](https://github.com/2b9sa2owa/okffs/issues/58)): Added an out-of-the-box PR review-response workflow — `list_pr_review_comments`, `reply_to_review_comment`, and `resolve_review_thread` tools plus an `address_pr_review` MCP prompt, gated by `OKFFS_RESOLVE_THREADS`.
-- 2026-06-28 ([#56](https://github.com/2b9sa2owa/okffs/issues/56)): Reduced auth/setup friction — token resolves from `GITHUB_TOKEN` or falls back to `gh auth token`; owner/repo auto-detect from the `origin` git remote when env vars are unset.
+
+See [CHANGELOG.md](CHANGELOG.md) for the full, per-version history and [Releases](https://github.com/neturely/okffs/releases) for release notes. This file's tool and phase sections above are kept current; the changelog is the single source of dated change history.
