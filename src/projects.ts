@@ -92,7 +92,7 @@ async function fetchProjectMetadata(): Promise<ProjectMetadata> {
       `query($project:ID!){
         node(id:$project){
           ... on ProjectV2 {
-            fields(first:50){
+            fields(first:100){
               nodes{
                 ... on ProjectV2SingleSelectField { id name options { id name } }
               }
@@ -239,7 +239,7 @@ async function fetchOrgIssueField(nameLower: string): Promise<OrgIssueField | nu
     }>(
       `query($org:String!){
         organization(login:$org){
-          issueFields(first:50){
+          issueFields(first:100){
             nodes{
               __typename
               ... on IssueFieldSingleSelect { id name options { id name } }
@@ -401,7 +401,7 @@ export async function getOrgIssueFieldValuesByNumber(): Promise<Map<number, Map<
           issues(first:100,states:OPEN){
             nodes{
               number
-              issueFieldValues(first:10){
+              issueFieldValues(first:50){
                 nodes{
                   __typename
                   ... on IssueFieldSingleSelectValue {
