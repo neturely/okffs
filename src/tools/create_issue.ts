@@ -2,7 +2,7 @@ import { z } from "zod";
 import { createIssue, updateIssueBody, getDefaultBranch, getRef, createBranch, buildBranchName, createDraftPullRequest } from "../github.js";
 import { config } from "../config.js";
 import { git, currentBranch } from "../git.js";
-import { addIssueToProject, getProjectMetadata, setProjectFieldValue } from "../projects.js";
+import { addIssueToProject, getProjectMetadata, setProjectFieldValue, getOrgIssueFieldPriority, setIssueFieldSingleSelect } from "../projects.js";
 
 export const name = "create_issue";
 
@@ -65,12 +65,33 @@ export async function handler(input: z.infer<typeof inputSchema>) {
           // Priority field exists but exposes no options via the project API —
           // the hallmark of a GitHub org-level Issue Field (options live under
           // organization.issueFields, not on the project single-select field).
-          // Full read/write support is tracked in #91.
-          console.warn(
-            `[okffs] Priority "${input.priority}" not set: the board's Priority field looks like an ` +
-              `org-level Issue Field, whose options aren't settable via the project API yet (see #91). ` +
-              `Set it manually in the board UI for now.`
-          );
+          // Resolve + set it via setIssueFieldValue on the issue itself (#91).
+          try {
+            const orgField = await getOrgIssueFieldPriority();
+            if (!orgField) {
+              console.warn(
+                `[okffs] Priority "${input.priority}" not set: the board's Priority field has no options via the project API and no org-level Priority Issue Field was found.`
+              );
+            } else {
+              const orgOptionId = orgField.options.get(input.priority);
+              if (orgOptionId) {
+                await setIssueFieldSingleSelect(issue.node_id, orgField.fieldId, orgOptionId);
+                priorityApplied = input.priority;
+              } else {
+                const opts = [...orgField.options.keys()].join(", ");
+                console.warn(
+                  `[okffs] Priority "${input.priority}" not set — no matching org Issue Field option. Options: ${opts}.`
+                );
+              }
+            }
+          } catch (err) {
+            // Permission (fine-grained PAT FORBIDDEN) or preview-API errors —
+            // never fatal. orgFieldCall already crafts an actionable message.
+            console.warn(
+              "[okffs] Priority not set via org Issue Field:",
+              err instanceof Error ? err.message : err
+            );
+          }
         } else {
           const opts = [...meta.priorityOptions.keys()].join(", ");
           console.warn(

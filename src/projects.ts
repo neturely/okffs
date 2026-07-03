@@ -164,6 +164,117 @@ export async function setProjectFieldValue(
   );
 }
 
+// --- Org-level Issue Fields (Phase 5.1, #91) -------------------------------
+// GitHub's newer org-level "Issue Fields" (e.g. Priority, Effort) are NOT the
+// same as a project-native single-select field: their options live under
+// organization.issueFields, and values are written on the *issue* (not the
+// project item) via setIssueFieldValue. On such boards the project single-select
+// field reports empty options, which is the signal to fall back to this path.
+//
+// Access needs a different permission than Projects: a classic PAT with the
+// `admin:org` scope works; fine-grained PATs currently get FORBIDDEN for this
+// preview API. Translate that into an actionable message rather than the
+// Projects-scope one.
+async function orgFieldCall<T>(fn: () => Promise<T>): Promise<T> {
+  try {
+    return await fn();
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (/\b403\b|FORBIDDEN|not accessible/i.test(msg)) {
+      throw new Error(
+        "[okffs] GitHub denied access to org-level Issue Fields (organization.issueFields). " +
+          "This is a separate permission from Projects: a classic PAT with the `admin:org` scope works; " +
+          "fine-grained PATs currently return FORBIDDEN for this preview API. Use an org-capable GITHUB_TOKEN " +
+          "or set the Priority manually in the board UI. " +
+          `Original error: ${msg}`
+      );
+    }
+    throw err;
+  }
+}
+
+export interface OrgIssueField {
+  fieldId: string;
+  options: Map<string, string>; // option name → option id
+}
+
+let orgPriorityCache: Promise<OrgIssueField | null> | null = null;
+
+// Discover the org's single-select "Priority" Issue Field and its options once
+// per process. Returns null if the owner isn't an org, has no such field, or the
+// field isn't a single-select. Throws (via orgFieldCall) on a permission error.
+export function getOrgIssueFieldPriority(): Promise<OrgIssueField | null> {
+  if (!orgPriorityCache) {
+    orgPriorityCache = fetchOrgIssueFieldPriority().catch((err) => {
+      orgPriorityCache = null;
+      throw err;
+    });
+  }
+  return orgPriorityCache;
+}
+
+async function fetchOrgIssueFieldPriority(): Promise<OrgIssueField | null> {
+  const data = await orgFieldCall(() =>
+    graphqlRequest<{
+      organization: {
+        issueFields: {
+          nodes: Array<{
+            __typename?: string;
+            id?: string;
+            name?: string;
+            options?: Array<{ id: string; name: string }>;
+          }>;
+        } | null;
+      } | null;
+    }>(
+      `query($org:String!){
+        organization(login:$org){
+          issueFields(first:50){
+            nodes{
+              __typename
+              ... on IssueFieldSingleSelect { id name options { id name } }
+            }
+          }
+        }
+      }`,
+      { org: owner }
+    )
+  );
+
+  const nodes = data.organization?.issueFields?.nodes ?? [];
+  const priority = nodes.find(
+    (n) =>
+      n.__typename === "IssueFieldSingleSelect" &&
+      (n.name ?? "").toLowerCase() === "priority" &&
+      n.id &&
+      n.options
+  );
+  if (!priority?.id || !priority.options) return null;
+  return {
+    fieldId: priority.id,
+    options: new Map(priority.options.map((o) => [o.name, o.id] as const)),
+  };
+}
+
+// Set an org Issue Field single-select value on an issue (by its node id).
+export async function setIssueFieldSingleSelect(
+  issueNodeId: string,
+  fieldId: string,
+  optionId: string
+): Promise<void> {
+  await orgFieldCall(() =>
+    graphqlRequest(
+      `mutation($iss:ID!,$field:ID!,$opt:ID!){
+        setIssueFieldValue(input:{
+          issueId:$iss,
+          issueFields:[{ fieldId:$field, singleSelectOptionId:$opt }]
+        }){ issue{ number } }
+      }`,
+      { iss: issueNodeId, field: fieldId, opt: optionId }
+    )
+  );
+}
+
 // Find the project item id for an issue already on the board (null if absent).
 export async function getProjectItemForIssue(issueNumber: number): Promise<string | null> {
   const projectId = requireProjectId();
