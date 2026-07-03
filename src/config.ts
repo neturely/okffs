@@ -49,6 +49,14 @@ export const config = {
   // OKFFS_DEFAULT_EFFORT — same as OKFFS_DEFAULT_PRIORITY, for the board's Effort
   // field (org Issue Field or project-native). Unset = no effort unless passed.
   defaultEffort: process.env.OKFFS_DEFAULT_EFFORT || null,
+  // OKFFS_INFER_PRIORITY / OKFFS_INFER_EFFORT — when on (the default), create_issue's
+  // tool description tells Claude to infer a priority/effort for the issue from the
+  // task itself, so okffs uses its AI brain rather than always relying on the static
+  // OKFFS_DEFAULT_*. Claude omits the field when it genuinely can't judge, and the
+  // default fills in. Set to "false" to turn the inference instruction off (only an
+  // explicit param or the default is used then).
+  inferPriority: process.env.OKFFS_INFER_PRIORITY !== "false",
+  inferEffort: process.env.OKFFS_INFER_EFFORT !== "false",
   // OKFFS_PROJECT_INITIAL_STATUS — Status column a freshly auto-added issue
   // should land in (e.g. "Backlog"). Set after the draft PR is created so it
   // wins over GitHub's "PR linked to issue" workflow, which would otherwise flip
