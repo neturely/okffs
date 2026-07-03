@@ -61,11 +61,20 @@ export async function handler(input: z.infer<typeof inputSchema>) {
           console.warn(
             `[okffs] Priority "${input.priority}" not set: the board has no Priority field.`
           );
+        } else if (meta.priorityOptions.size === 0 && !config.classicPat) {
+          // Priority is a GitHub org-level Issue Field (project single-select
+          // reports no options). Setting it needs a classic PAT with `admin:org`
+          // — an opt-in the user must acknowledge via OKFFS_CLASSIC_PAT because
+          // classic tokens are broad-scoped (#91). Without it, skip the (doomed)
+          // org API call and point at the manual path.
+          console.warn(
+            `[okffs] Priority "${input.priority}" not set: the board's Priority is an org-level Issue Field, ` +
+              `which okffs can only set with a classic PAT (\`admin:org\`) and OKFFS_CLASSIC_PAT=true (security tradeoff — see docs). ` +
+              `Set it manually in the board UI for now.`
+          );
         } else if (meta.priorityOptions.size === 0) {
-          // Priority field exists but exposes no options via the project API —
-          // the hallmark of a GitHub org-level Issue Field (options live under
-          // organization.issueFields, not on the project single-select field).
-          // Resolve + set it via setIssueFieldValue on the issue itself (#91).
+          // OKFFS_CLASSIC_PAT is on: resolve the option from organization.issueFields
+          // and set it via setIssueFieldValue on the issue itself (#91).
           try {
             const orgField = await getOrgIssueFieldPriority();
             if (!orgField) {
