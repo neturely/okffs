@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 See [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+### Fixed
+- Projects v2 auto-add no longer fails silently: `create_issue` now surfaces an auto-add failure in its response (not just the server log), and the Projects permission error now recognises the `INSUFFICIENT_SCOPES` case and points at the gh-CLI fallback token's missing `project` scope ([#101](https://github.com/neturely/okffs/issues/101)).
 
 ## [0.3.0] - 2026-07-01
 ### Changed

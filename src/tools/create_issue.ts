@@ -42,6 +42,7 @@ export async function handler(input: z.infer<typeof inputSchema>) {
   // failure warns with an [okffs] prefix and never blocks issue creation.
   let addedToBoard = false;
   let priorityApplied: string | null = null;
+  let boardError: string | null = null;
   if (config.projectAutoAdd && config.projectEnabled) {
     try {
       const itemId = await addIssueToProject(issue.node_id);
@@ -76,7 +77,8 @@ export async function handler(input: z.infer<typeof inputSchema>) {
         }
       }
     } catch (err) {
-      console.warn("[okffs] Failed to add issue to project board:", err instanceof Error ? err.message : err);
+      boardError = err instanceof Error ? err.message : String(err);
+      console.warn("[okffs] Failed to add issue to project board:", boardError);
     }
   }
 
@@ -138,6 +140,14 @@ export async function handler(input: z.infer<typeof inputSchema>) {
   if (addedToBoard) {
     lines.push(
       `Board: added to the project${priorityApplied ? ` (priority: ${priorityApplied})` : ""}`
+    );
+  } else if (boardError) {
+    // Auto-add was enabled but failed. Surface it here (not just the server log)
+    // so it isn't invisible — the issue was still created successfully, which
+    // otherwise makes an empty board look like it worked. See #101.
+    lines.push(
+      `Board: NOT added — auto-add is on but failed. The issue itself was created fine.`,
+      `  ${boardError}`
     );
   }
 
