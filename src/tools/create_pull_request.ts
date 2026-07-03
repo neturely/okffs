@@ -19,7 +19,7 @@ import { git, currentBranch } from "../git.js";
 export const name = "create_pull_request";
 
 export const description =
-  "Create a pull request for the current issue branch. Reads the issue, its comments, and commits to generate a PR title and body. Always includes Closes #N. If OKFFS_UPDATE_DOCS is true, updates the project docs (CHANGELOG.md, and when relevant CLAUDE.md, CONTRIBUTING.md, SECURITY.md) and commits them onto the branch before creating the PR. If a PR already exists for the branch (e.g. a draft opened by create_issue under OKFFS_AUTO_PR=true), it is updated and marked ready for review instead of erroring. Posts a summary comment to the issue.";
+  "Create a pull request for the current issue branch. Reads the issue, its comments, and commits to generate a PR title and body. Always includes Closes #N. If OKFFS_UPDATE_DOCS is true, updates the project docs (CHANGELOG.md always, plus SECURITY.md for security-related changes) and commits them onto the branch before creating the PR. If a PR already exists for the branch (e.g. a draft opened by create_issue under OKFFS_AUTO_PR=true), it is updated and marked ready for review instead of erroring. Posts a summary comment to the issue.";
 
 export const inputSchema = z.object({
   issue_number: z.number().int().positive().describe("The issue number to create a PR for"),
