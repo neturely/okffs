@@ -1,0 +1,2 @@
+<!-- okffs:type=Added -->
+- Effort support, mirroring Priority: `create_issue` accepts an `effort` param (plus `OKFFS_DEFAULT_EFFORT`), and `list_issues` shows each issue's `effort:`. Works with both a project-native Effort field and a GitHub org-level Issue Field (via `OKFFS_CLASSIC_PAT`). The org Issue Field layer was generalized (`getOrgIssueField(name)`, name-keyed project metadata) so Priority, Effort, and any future single-select field share one code path.
