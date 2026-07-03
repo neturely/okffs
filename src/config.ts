@@ -32,6 +32,37 @@ export const config = {
   // OKFFS_PROJECT_AUTO_ADD=true — fallback for users without native GitHub board
   // automation: create_issue adds the new issue to the board. Off by default.
   projectAutoAdd: process.env.OKFFS_PROJECT_AUTO_ADD === "true",
+  // OKFFS_CLASSIC_PAT=true — a declaration that GITHUB_TOKEN is a classic PAT with
+  // org-admin scope (`admin:org`), which unlocks org-admin-level features that
+  // fine-grained PATs can't reach — currently setting a Priority that is a GitHub
+  // *org-level Issue Field* (#91), via organization.issueFields / setIssueFieldValue.
+  // Off by default. SECURITY: classic `admin:org` tokens are broad (all your repos
+  // + org admin); only enable this if you accept that tradeoff. When off, okffs
+  // skips the org Issue Field API path entirely and tells you to set it manually.
+  classicPat: process.env.OKFFS_CLASSIC_PAT === "true",
+  // OKFFS_DEFAULT_PRIORITY — Priority applied to a new issue when create_issue
+  // isn't given an explicit `priority` (mirrors OKFFS_DEFAULT_LABELS/ASSIGNEES).
+  // Flows through the same priority handling: set via a project-native Priority
+  // field, or an org Issue Field when OKFFS_CLASSIC_PAT is on; skipped gracefully
+  // otherwise. Unset = no priority unless the caller passes one. e.g. "Medium".
+  defaultPriority: process.env.OKFFS_DEFAULT_PRIORITY || null,
+  // OKFFS_DEFAULT_EFFORT — same as OKFFS_DEFAULT_PRIORITY, for the board's Effort
+  // field (org Issue Field or project-native). Unset = no effort unless passed.
+  defaultEffort: process.env.OKFFS_DEFAULT_EFFORT || null,
+  // OKFFS_INFER_PRIORITY / OKFFS_INFER_EFFORT — when on (the default), create_issue's
+  // tool description tells Claude to infer a priority/effort for the issue from the
+  // task itself, so okffs uses its AI brain rather than always relying on the static
+  // OKFFS_DEFAULT_*. Claude omits the field when it genuinely can't judge, and the
+  // default fills in. Set to "false" to turn the inference instruction off (only an
+  // explicit param or the default is used then).
+  inferPriority: process.env.OKFFS_INFER_PRIORITY !== "false",
+  inferEffort: process.env.OKFFS_INFER_EFFORT !== "false",
+  // OKFFS_PROJECT_INITIAL_STATUS — Status column a freshly auto-added issue
+  // should land in (e.g. "Backlog"). Set after the draft PR is created so it
+  // wins over GitHub's "PR linked to issue" workflow, which would otherwise flip
+  // a scaffolded issue straight to "In Progress" (#103). Unset = leave whatever
+  // column the board's own automation assigns.
+  projectInitialStatus: process.env.OKFFS_PROJECT_INITIAL_STATUS || null,
 };
 
 // Warn once at startup if the feature is half-configured. Non-fatal: the
