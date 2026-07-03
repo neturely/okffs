@@ -19,18 +19,23 @@ export interface ProjectMetadata {
 }
 
 // Throw a clear, actionable message when the token can't reach Projects, rather
-// than leaking a raw GraphQL FORBIDDEN blob. Permission errors arrive either as
-// an HTTP 403 or as a 200 with a FORBIDDEN error in the payload.
+// than leaking a raw GraphQL blob. Permission errors arrive in several shapes:
+// an HTTP 403, a 200 with a FORBIDDEN error, or — the common gh-CLI-fallback
+// case — an INSUFFICIENT_SCOPES error because the CLI's OAuth token lacks the
+// `project` scope that Projects v2 requires.
 async function projectCall<T>(fn: () => Promise<T>): Promise<T> {
   try {
     return await fn();
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    if (/\b403\b|FORBIDDEN|not accessible/i.test(msg)) {
+    if (/\b403\b|FORBIDDEN|INSUFFICIENT_SCOPES|not accessible|requires .*\bproject\b/i.test(msg)) {
       throw new Error(
-        "[okffs] GitHub denied a Projects API call (403 / forbidden). The token needs Projects access: " +
+        "[okffs] GitHub denied a Projects API call (insufficient scope / forbidden). " +
+          "Projects v2 (GraphQL) needs a token with Projects access: " +
           'fine-grained PAT → Organization permissions → "Projects: Read and write"; ' +
           "classic PAT → the `project` scope. " +
+          "Note: the GitHub CLI fallback token (used when GITHUB_TOKEN is unset) usually " +
+          "lacks `project` scope — grant it with `gh auth refresh -s project,read:project`. " +
           `Original error: ${msg}`
       );
     }
