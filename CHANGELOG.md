@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 See [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+### Added
+- `OKFFS_PROJECT_INITIAL_STATUS` — pins a freshly auto-added issue to a chosen board column (e.g. `Backlog`). `create_issue` sets it after the draft PR is created so it wins over GitHub's "PR linked to issue" workflow, which otherwise flips scaffolded issues straight to "In Progress" ([#103](https://github.com/neturely/okffs/issues/103)).
+
 ### Fixed
 - Projects v2 auto-add no longer fails silently: `create_issue` now surfaces an auto-add failure in its response (not just the server log), and the Projects permission error now recognises the `INSUFFICIENT_SCOPES` case and points at the gh-CLI fallback token's missing `project` scope ([#101](https://github.com/neturely/okffs/issues/101)).
 

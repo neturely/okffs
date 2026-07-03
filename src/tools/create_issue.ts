@@ -43,9 +43,11 @@ export async function handler(input: z.infer<typeof inputSchema>) {
   let addedToBoard = false;
   let priorityApplied: string | null = null;
   let boardError: string | null = null;
+  let boardItemId: string | null = null;
   if (config.projectAutoAdd && config.projectEnabled) {
     try {
       const itemId = await addIssueToProject(issue.node_id);
+      boardItemId = itemId;
       addedToBoard = true;
       if (input.priority) {
         const meta = await getProjectMetadata();
@@ -118,6 +120,35 @@ export async function handler(input: z.infer<typeof inputSchema>) {
     }
   }
 
+  // Pin the board Status to the configured initial column (e.g. Backlog). This
+  // runs LAST — after the draft PR is created — on purpose: the PR's `Closes #N`
+  // link fires GitHub's "PR linked to issue" workflow, which flips a scaffolded
+  // issue to "In Progress". Setting our intended status here lets it win that
+  // race so freshly-created issues land where okffs means them to (#103).
+  // Non-fatal, like the rest of the board handling.
+  let initialStatusApplied: string | null = null;
+  if (config.projectInitialStatus && boardItemId) {
+    try {
+      const meta = await getProjectMetadata();
+      const optionId = meta.statusFieldId
+        ? meta.statusOptions.get(config.projectInitialStatus)
+        : undefined;
+      if (meta.statusFieldId && optionId) {
+        await setProjectFieldValue(boardItemId, meta.statusFieldId, optionId);
+        initialStatusApplied = config.projectInitialStatus;
+      } else if (!meta.statusFieldId) {
+        console.warn(`[okffs] OKFFS_PROJECT_INITIAL_STATUS set but the board has no Status field.`);
+      } else {
+        const opts = [...meta.statusOptions.keys()].join(", ");
+        console.warn(
+          `[okffs] OKFFS_PROJECT_INITIAL_STATUS "${config.projectInitialStatus}" doesn't match a board Status option. Options: ${opts}.`
+        );
+      }
+    } catch (err) {
+      console.warn("[okffs] Failed to set initial board status:", err instanceof Error ? err.message : err);
+    }
+  }
+
   const lines = [
     `Issue #${issue.number} created: ${issue.html_url}`,
     `Branch: \`${branchName}\``,
@@ -138,8 +169,12 @@ export async function handler(input: z.infer<typeof inputSchema>) {
   }
 
   if (addedToBoard) {
+    const bits = [
+      priorityApplied ? `priority: ${priorityApplied}` : null,
+      initialStatusApplied ? `status: ${initialStatusApplied}` : null,
+    ].filter(Boolean);
     lines.push(
-      `Board: added to the project${priorityApplied ? ` (priority: ${priorityApplied})` : ""}`
+      `Board: added to the project${bits.length ? ` (${bits.join(", ")})` : ""}`
     );
   } else if (boardError) {
     // Auto-add was enabled but failed. Surface it here (not just the server log)
@@ -161,9 +196,10 @@ export async function handler(input: z.infer<typeof inputSchema>) {
   // Conversational nudge: prompt the host LLM to offer moving the issue into
   // the "In Progress" column via update_project_status once work begins.
   if (addedToBoard) {
+    const where = initialStatusApplied ? `"${initialStatusApplied}"` : "its default column";
     lines.push(
       ``,
-      `This issue is on the board in its default column. Want me to move it to "In Progress" and start? ` +
+      `This issue is on the board in ${where}. Want me to move it to "In Progress" and start? ` +
       `(I can call update_project_status for #${issue.number}.)`
     );
   }
