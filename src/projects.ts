@@ -300,9 +300,16 @@ export async function getProjectItemForIssue(issueNumber: number): Promise<strin
   return nodes.find((n) => n.project.id === projectId)?.id ?? null;
 }
 
-// Map of issue number → current Status column, for list_issues enrichment.
-// Capped at the first 100 board items (matches list_issues' own page size).
-export async function getProjectStatusByIssueNumber(): Promise<Map<number, string>> {
+export interface ProjectItemFields {
+  status?: string;
+  priority?: string; // project-native Priority field only (org Issue Fields aren't
+                     // exposed on the project item — see getOrgIssuePrioritiesByNumber)
+}
+
+// Map of issue number → its board Status + project-native Priority, for
+// list_issues enrichment. Capped at the first 100 board items (matches
+// list_issues' own page size).
+export async function getProjectFieldsByIssueNumber(): Promise<Map<number, ProjectItemFields>> {
   const projectId = requireProjectId();
   const data = await projectCall(() =>
     graphqlRequest<{
@@ -310,7 +317,8 @@ export async function getProjectStatusByIssueNumber(): Promise<Map<number, strin
         items: {
           nodes: Array<{
             content: { number?: number } | null;
-            fieldValueByName: { name?: string } | null;
+            status: { name?: string } | null;
+            priority: { name?: string } | null;
           }>;
         };
       } | null;
@@ -321,7 +329,10 @@ export async function getProjectStatusByIssueNumber(): Promise<Map<number, strin
             items(first:100){
               nodes{
                 content{ ... on Issue { number } }
-                fieldValueByName(name:"Status"){
+                status:fieldValueByName(name:"Status"){
+                  ... on ProjectV2ItemFieldSingleSelectValue { name }
+                }
+                priority:fieldValueByName(name:"Priority"){
                   ... on ProjectV2ItemFieldSingleSelectValue { name }
                 }
               }
@@ -333,11 +344,69 @@ export async function getProjectStatusByIssueNumber(): Promise<Map<number, strin
     )
   );
 
-  const result = new Map<number, string>();
+  const result = new Map<number, ProjectItemFields>();
   for (const item of data.node?.items.nodes ?? []) {
     const number = item.content?.number;
-    const status = item.fieldValueByName?.name;
-    if (number != null && status) result.set(number, status);
+    if (number == null) continue;
+    const fields: ProjectItemFields = {};
+    if (item.status?.name) fields.status = item.status.name;
+    if (item.priority?.name) fields.priority = item.priority.name;
+    if (fields.status || fields.priority) result.set(number, fields);
+  }
+  return result;
+}
+
+// Map of issue number → org-level Issue Field "Priority" value, for boards whose
+// Priority is an org Issue Field (not a project-native field — those aren't
+// readable off the project item). One batched query over open issues. Needs the
+// org-field permission, so callers gate this on OKFFS_CLASSIC_PAT. Throws (via
+// orgFieldCall) on a permission error; list_issues treats that as non-fatal.
+export async function getOrgIssuePrioritiesByNumber(): Promise<Map<number, string>> {
+  const data = await orgFieldCall(() =>
+    graphqlRequest<{
+      repository: {
+        issues: {
+          nodes: Array<{
+            number: number;
+            issueFieldValues: {
+              nodes: Array<{
+                __typename?: string;
+                name?: string;
+                field?: { name?: string };
+              }>;
+            };
+          }>;
+        };
+      } | null;
+    }>(
+      `query($owner:String!,$repo:String!){
+        repository(owner:$owner,name:$repo){
+          issues(first:100,states:OPEN){
+            nodes{
+              number
+              issueFieldValues(first:10){
+                nodes{
+                  __typename
+                  ... on IssueFieldSingleSelectValue {
+                    name
+                    field{ ... on IssueFieldSingleSelect { name } }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }`,
+      { owner, repo }
+    )
+  );
+
+  const result = new Map<number, string>();
+  for (const issue of data.repository?.issues.nodes ?? []) {
+    const pri = issue.issueFieldValues.nodes.find(
+      (v) => v.field?.name === "Priority" && v.name
+    );
+    if (pri?.name) result.set(issue.number, pri.name);
   }
   return result;
 }

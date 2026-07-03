@@ -40,6 +40,12 @@ export const config = {
   // + org admin); only enable this if you accept that tradeoff. When off, okffs
   // skips the org Issue Field API path entirely and tells you to set it manually.
   classicPat: process.env.OKFFS_CLASSIC_PAT === "true",
+  // OKFFS_DEFAULT_PRIORITY — Priority applied to a new issue when create_issue
+  // isn't given an explicit `priority` (mirrors OKFFS_DEFAULT_LABELS/ASSIGNEES).
+  // Flows through the same priority handling: set via a project-native Priority
+  // field, or an org Issue Field when OKFFS_CLASSIC_PAT is on; skipped gracefully
+  // otherwise. Unset = no priority unless the caller passes one. e.g. "Medium".
+  defaultPriority: process.env.OKFFS_DEFAULT_PRIORITY || null,
   // OKFFS_PROJECT_INITIAL_STATUS — Status column a freshly auto-added issue
   // should land in (e.g. "Backlog"). Set after the draft PR is created so it
   // wins over GitHub's "PR linked to issue" workflow, which would otherwise flip
