@@ -16,7 +16,7 @@ export const inputSchema = z.object({
   labels: z.array(z.string()).optional().describe("Labels to apply e.g. bug, feature"),
   milestone: z.number().int().optional().describe("Milestone number to assign"),
   priority: z.string().optional().describe(
-    "Optional Project board Priority (e.g. High, Medium, Low) — matched against the board's Priority field options. Only applied when OKFFS_PROJECT_AUTO_ADD=true and the board has a Priority field."
+    "Optional Project board Priority (e.g. Urgent, High, Medium, Low) — matched against the board's Priority options (project-native field, or a GitHub org Issue Field when OKFFS_CLASSIC_PAT is set). Only applied when OKFFS_PROJECT_AUTO_ADD=true and a Priority field exists. If omitted, OKFFS_DEFAULT_PRIORITY is used when set."
   ),
 });
 
@@ -25,6 +25,8 @@ export async function handler(input: z.infer<typeof inputSchema>) {
   const resolvedLabels = [
     ...new Set([...(input.labels ?? []), ...config.defaultLabels])
   ];
+  // Fall back to OKFFS_DEFAULT_PRIORITY when no explicit priority is given.
+  const resolvedPriority = input.priority ?? config.defaultPriority;
 
   const issue = await createIssue(input.title, input.description, resolvedAssignees, resolvedLabels, input.milestone);
 
@@ -49,17 +51,17 @@ export async function handler(input: z.infer<typeof inputSchema>) {
       const itemId = await addIssueToProject(issue.node_id);
       boardItemId = itemId;
       addedToBoard = true;
-      if (input.priority) {
+      if (resolvedPriority) {
         const meta = await getProjectMetadata();
         const optionId = meta.priorityFieldId
-          ? meta.priorityOptions.get(input.priority)
+          ? meta.priorityOptions.get(resolvedPriority)
           : undefined;
         if (meta.priorityFieldId && optionId) {
           await setProjectFieldValue(itemId, meta.priorityFieldId, optionId);
-          priorityApplied = input.priority;
+          priorityApplied = resolvedPriority;
         } else if (!meta.priorityFieldId) {
           console.warn(
-            `[okffs] Priority "${input.priority}" not set: the board has no Priority field.`
+            `[okffs] Priority "${resolvedPriority}" not set: the board has no Priority field.`
           );
         } else if (meta.priorityOptions.size === 0 && !config.classicPat) {
           // Priority is a GitHub org-level Issue Field (project single-select
@@ -68,7 +70,7 @@ export async function handler(input: z.infer<typeof inputSchema>) {
           // classic tokens are broad-scoped (#91). Without it, skip the (doomed)
           // org API call and point at the manual path.
           console.warn(
-            `[okffs] Priority "${input.priority}" not set: the board's Priority is an org-level Issue Field, ` +
+            `[okffs] Priority "${resolvedPriority}" not set: the board's Priority is an org-level Issue Field, ` +
               `which okffs can only set with a classic PAT (\`admin:org\`) and OKFFS_CLASSIC_PAT=true (security tradeoff — see docs). ` +
               `Set it manually in the board UI for now.`
           );
@@ -79,17 +81,17 @@ export async function handler(input: z.infer<typeof inputSchema>) {
             const orgField = await getOrgIssueFieldPriority();
             if (!orgField) {
               console.warn(
-                `[okffs] Priority "${input.priority}" not set: the board's Priority field has no options via the project API and no org-level Priority Issue Field was found.`
+                `[okffs] Priority "${resolvedPriority}" not set: the board's Priority field has no options via the project API and no org-level Priority Issue Field was found.`
               );
             } else {
-              const orgOptionId = orgField.options.get(input.priority);
+              const orgOptionId = orgField.options.get(resolvedPriority);
               if (orgOptionId) {
                 await setIssueFieldSingleSelect(issue.node_id, orgField.fieldId, orgOptionId);
-                priorityApplied = input.priority;
+                priorityApplied = resolvedPriority;
               } else {
                 const opts = [...orgField.options.keys()].join(", ");
                 console.warn(
-                  `[okffs] Priority "${input.priority}" not set — no matching org Issue Field option. Options: ${opts}.`
+                  `[okffs] Priority "${resolvedPriority}" not set — no matching org Issue Field option. Options: ${opts}.`
                 );
               }
             }
@@ -104,7 +106,7 @@ export async function handler(input: z.infer<typeof inputSchema>) {
         } else {
           const opts = [...meta.priorityOptions.keys()].join(", ");
           console.warn(
-            `[okffs] Could not set priority "${input.priority}" — no matching option. Board Priority options: ${opts}.`
+            `[okffs] Could not set priority "${resolvedPriority}" — no matching option. Board Priority options: ${opts}.`
           );
         }
       }
