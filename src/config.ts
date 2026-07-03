@@ -32,6 +32,12 @@ export const config = {
   // OKFFS_PROJECT_AUTO_ADD=true — fallback for users without native GitHub board
   // automation: create_issue adds the new issue to the board. Off by default.
   projectAutoAdd: process.env.OKFFS_PROJECT_AUTO_ADD === "true",
+  // OKFFS_PROJECT_INITIAL_STATUS — Status column a freshly auto-added issue
+  // should land in (e.g. "Backlog"). Set after the draft PR is created so it
+  // wins over GitHub's "PR linked to issue" workflow, which would otherwise flip
+  // a scaffolded issue straight to "In Progress" (#103). Unset = leave whatever
+  // column the board's own automation assigns.
+  projectInitialStatus: process.env.OKFFS_PROJECT_INITIAL_STATUS || null,
 };
 
 // Warn once at startup if the feature is half-configured. Non-fatal: the
