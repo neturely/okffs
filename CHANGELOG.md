@@ -7,6 +7,9 @@ See [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Added
 - `OKFFS_PROJECT_INITIAL_STATUS` — pins a freshly auto-added issue to a chosen board column (e.g. `Backlog`). `create_issue` sets it after the draft PR is created so it wins over GitHub's "PR linked to issue" workflow, which otherwise flips scaffolded issues straight to "In Progress" ([#103](https://github.com/neturely/okffs/issues/103)).
 
+### Changed
+- `OKFFS_UPDATE_DOCS` now writes a per-issue changelog **fragment** at `.changes/unreleased/{issue-number}-{slug}.md` instead of editing the shared `CHANGELOG.md` on each branch, so parallel issue branches no longer conflict on the changelog. `prepare_release` assembles the fragments into `CHANGELOG.md` and deletes them in the release commit (changesets/towncrier pattern) ([#105](https://github.com/neturely/okffs/issues/105)).
+
 ### Fixed
 - Projects v2 auto-add no longer fails silently: `create_issue` now surfaces an auto-add failure in its response (not just the server log), and the Projects permission error now recognises the `INSUFFICIENT_SCOPES` case and points at the gh-CLI fallback token's missing `project` scope ([#101](https://github.com/neturely/okffs/issues/101)).
 
