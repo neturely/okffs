@@ -2,7 +2,7 @@ import { z } from "zod";
 import fs from "fs";
 import path from "path";
 import { createPullRequest, getDefaultBranch } from "../github.js";
-import { getUnreleasedSection, rollChangelogForRelease } from "../docs.js";
+import { getUnreleasedSection, rollChangelogForRelease, foldFragmentsIntoChangelog } from "../docs.js";
 import { git, currentBranch } from "../git.js";
 
 export const name = "prepare_release";
@@ -47,13 +47,17 @@ export async function handler(input: z.infer<typeof inputSchema>) {
   const pkg = JSON.parse(fs.readFileSync(path.join(base, "package.json"), "utf8"));
   const currentVersion: string = pkg.version;
 
-  const changelog = fs.readFileSync(path.join(base, "CHANGELOG.md"), "utf8");
+  const changelogRaw = fs.readFileSync(path.join(base, "CHANGELOG.md"), "utf8");
+  // Fold any per-issue fragments (#105) into [Unreleased] before the emptiness
+  // and bump-level checks, so entries that live in .changes/unreleased/ count.
+  const previewFold = foldFragmentsIntoChangelog(changelogRaw, base);
+  const changelog = previewFold.changelog;
   const unreleased = getUnreleasedSection(changelog);
   if (unreleased === null) {
     return { content: [{ type: "text" as const, text: "CHANGELOG.md has no ## [Unreleased] section — nothing to release." }] };
   }
   if (!/^[-*] /m.test(unreleased)) {
-    return { content: [{ type: "text" as const, text: "The ## [Unreleased] section has no entries — nothing to release." }] };
+    return { content: [{ type: "text" as const, text: "The ## [Unreleased] section has no entries (and no .changes/unreleased fragments) — nothing to release." }] };
   }
 
   // Resolve the target version.
@@ -83,8 +87,9 @@ export async function handler(input: z.infer<typeof inputSchema>) {
           `  target:  ${targetVersion}  (${how})\n` +
           `  branch:  ${branch}\n\n` +
           `Will: bump package.json + package-lock.json, roll the CHANGELOG into "## [${targetVersion}]", ` +
+          (previewFold.count > 0 ? `assemble ${previewFold.count} changelog fragment(s) and delete them, ` : ``) +
           `commit on ${branch}, and open a PR. It will NOT tag or publish.\n\n` +
-          `[Unreleased] entries to be released:\n${unreleased}\n\n` +
+          `[Unreleased] entries to be released${previewFold.count > 0 ? " (fragments included)" : ""}:\n${unreleased}\n\n` +
           `Re-call prepare_release with confirmed: true to apply.`,
       }],
     };
@@ -93,6 +98,7 @@ export async function handler(input: z.infer<typeof inputSchema>) {
   const baseBranch = await getDefaultBranch();
   const previousBranch = currentBranch();
   let prepared = false;
+  let fragmentsAssembled = 0;
   try {
     git(["fetch", "origin"]);
     git(["checkout", "-B", branch, `origin/${baseBranch}`]);
@@ -124,12 +130,20 @@ export async function handler(input: z.infer<typeof inputSchema>) {
     // reformatting; package-lock has two self-version fields (root + packages[""]).
     const newPkg = replaceExactly(pkgRaw, `"version": "${fromVersion}"`, `"version": "${targetVersion}"`, 1, "package.json");
     const newLock = replaceExactly(lockRaw, `"version": "${fromVersion}"`, `"version": "${targetVersion}"`, 2, "package-lock.json");
-    const newCl = rollChangelogForRelease(clRaw, targetVersion, fromVersion, date);
+    // Assemble fragments from the base branch's working tree, then roll. The
+    // fragments were committed on their issue branches and merged into base, so
+    // they're present here; we delete them in the same release commit (#105).
+    const applyFold = foldFragmentsIntoChangelog(clRaw, base);
+    const newCl = rollChangelogForRelease(applyFold.changelog, targetVersion, fromVersion, date);
 
     fs.writeFileSync(pkgPath, newPkg);
     fs.writeFileSync(lockPath, newLock);
     fs.writeFileSync(clPath, newCl);
 
+    fragmentsAssembled = applyFold.consumed.length;
+    if (applyFold.consumed.length > 0) {
+      git(["rm", "--quiet", "--", ...applyFold.consumed]);
+    }
     git(["add", "package.json", "package-lock.json", "CHANGELOG.md"]);
     git(["commit", "-m", `release: ${targetVersion}`]);
     git(["push", "-u", "origin", branch]);
@@ -157,6 +171,9 @@ export async function handler(input: z.infer<typeof inputSchema>) {
     ``,
     `- Bumped \`package.json\` and \`package-lock.json\` to ${targetVersion}.`,
     `- Rolled the CHANGELOG \`[Unreleased]\` section into \`## [${targetVersion}]\` and refreshed the compare links.`,
+    ...(fragmentsAssembled > 0
+      ? [`- Assembled and removed ${fragmentsAssembled} changelog fragment(s) from \`.changes/unreleased/\`.`]
+      : []),
     ``,
     `After merging, tag \`v${targetVersion}\` and push it — CI (\`publish.yml\`) publishes to npm on the tag. This PR does not tag or publish.`,
   ].join("\n");

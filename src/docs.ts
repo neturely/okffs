@@ -158,6 +158,85 @@ function insertChangelogEntry(changelog: string, type: string, entry: string): s
   return head + block + tail;
 }
 
+// --- Changelog fragments (#105) --------------------------------------------
+// Writing directly into the shared CHANGELOG.md on every issue branch makes
+// parallel branches deterministically conflict (add/add when the file is new,
+// same-hunk when it exists). Instead, each PR drops a uniquely-named fragment
+// under .changes/unreleased/ — those never collide — and prepare_release
+// assembles them into CHANGELOG.md at release time (changesets/towncrier style).
+
+const FRAGMENT_DIR = path.join(".changes", "unreleased");
+
+// Kebab-case the first few words of a title/summary for a stable fragment name.
+function slugify(text: string, maxWords = 6): string {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .split("-")
+    .filter(Boolean)
+    .slice(0, maxWords)
+    .join("-");
+}
+
+// Build a per-issue fragment: a uniquely-named file whose first line carries the
+// change type in a machine-readable comment, followed by the changelog bullet.
+function buildFragment(ctx: DocsContext): { relPath: string; content: string } {
+  const type = getChangeType(ctx);
+  const entry = buildChangelogEntry(ctx);
+  const source = ctx.issueTitle || ctx.summary || ctx.trigger;
+  const slug = slugify(source) || "entry";
+  // Prefix with the issue number when present — that alone guarantees a distinct
+  // filename per issue, which is what eliminates the cross-branch conflict.
+  const baseName = ctx.issueNumber ? `${ctx.issueNumber}-${slug}` : slug;
+  const relPath = path.join(FRAGMENT_DIR, `${baseName}.md`);
+  const content = `<!-- okffs:type=${type} -->\n${entry}\n`;
+  return { relPath, content };
+}
+
+export interface FragmentFold {
+  changelog: string;
+  consumed: string[]; // repo-relative paths of the fragments folded in
+  count: number;
+}
+
+// Fold every .changes/unreleased/*.md fragment into the changelog's [Unreleased]
+// section (grouped under the right ### heading), returning the new changelog text
+// and the fragment paths that were consumed (so the caller can `git rm` them).
+// A no-op when the directory is absent or empty — keeps prepare_release working
+// on repos that never used fragments.
+export function foldFragmentsIntoChangelog(changelog: string, base: string): FragmentFold {
+  const dir = path.join(base, FRAGMENT_DIR);
+  let files: string[];
+  try {
+    files = fs.readdirSync(dir).filter((f) => f.endsWith(".md")).sort();
+  } catch {
+    return { changelog, consumed: [], count: 0 };
+  }
+
+  let result = changelog;
+  const consumed: string[] = [];
+  for (const f of files) {
+    let raw: string;
+    try {
+      raw = fs.readFileSync(path.join(dir, f), "utf8");
+    } catch {
+      continue;
+    }
+    const typeMatch = raw.match(/okffs:type=(\w+)/);
+    const type = typeMatch ? typeMatch[1] : "Changed";
+    const entry = raw
+      .split("\n")
+      .filter((l) => l.trim() && !/okffs:type=/.test(l))
+      .join("\n")
+      .trim();
+    if (!entry) continue;
+    result = insertChangelogEntry(result, type, entry);
+    consumed.push(path.join(FRAGMENT_DIR, f));
+  }
+  return { changelog: result, consumed, count: consumed.length };
+}
+
 function shouldUpdateSecurity(ctx: DocsContext): boolean {
   const lower = (ctx.issueTitle ?? "") + ctx.summary;
   return /security|vulnerability|cve/i.test(lower);
@@ -177,21 +256,13 @@ function determineUpdates(ctx: DocsContext, base: string): FileUpdate[] {
   const isExcluded = (filename: string): boolean =>
     config.excludeDocs.some((f) => f.toLowerCase() === filename.toLowerCase());
 
-  // CHANGELOG.md — always append an entry under ## [Unreleased] or at the end
+  // Changelog — write a per-issue fragment instead of editing the shared
+  // CHANGELOG.md, so parallel branches never conflict (#105). prepare_release
+  // assembles the fragments into CHANGELOG.md at release time. The CHANGELOG.md
+  // exclude key still suppresses the entry entirely, for parity with before.
   if (!isExcluded("CHANGELOG.md")) {
-    const changelogPath = path.join(base, "CHANGELOG.md");
-    const changelog = readFile(changelogPath);
-    const type = getChangeType(ctx);
-    const entry = buildChangelogEntry(ctx);
-    if (changelog !== null) {
-      updates.push({ path: changelogPath, content: insertChangelogEntry(changelog, type, entry), created: false });
-    } else {
-      updates.push({
-        path: changelogPath,
-        content: `# Changelog\n\nAll notable changes to this project will be documented in this file.\nSee [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).\n\n## [Unreleased]\n### ${type}\n${entry}`,
-        created: true,
-      });
-    }
+    const frag = buildFragment(ctx);
+    updates.push({ path: path.join(base, frag.relPath), content: frag.content, created: true });
   }
 
   // SECURITY.md — only for security-related triggers. Title-based one-liner.
@@ -227,6 +298,8 @@ export async function updateProjectDocs(ctx: DocsContext): Promise<string[]> {
     const written: string[] = [];
     for (const u of updates) {
       try {
+        // Fragments live under .changes/unreleased/, which may not exist yet.
+        fs.mkdirSync(path.dirname(u.path), { recursive: true });
         fs.writeFileSync(u.path, u.content, "utf8");
         written.push(path.relative(base, u.path));
       } catch (err) {
