@@ -1,2 +1,0 @@
-<!-- okffs:type=Added -->
-- `OKFFS_CLASSIC_PAT` env flag (default `false`) — gates the org-level Issue Field Priority path (#91) behind an explicit opt-in that declares `GITHUB_TOKEN` is a classic PAT with `admin:org`. When off, okffs skips the org `organization.issueFields` call entirely and tells you to set Priority in the UI, avoiding a doomed API call and keeping the broad-scoped-token requirement opt-in for this public package ([#91](https://github.com/neturely/okffs/issues/91)).

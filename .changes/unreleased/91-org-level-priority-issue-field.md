@@ -1,2 +1,0 @@
-<!-- okffs:type=Added -->
-- `create_issue`'s `priority` now supports GitHub **org-level Issue Fields** (e.g. Priority), not just project-native single-select fields. When the board's Priority field reports no options (the org Issue Field signature), okffs resolves the option via `organization.issueFields` and sets it on the issue with `setIssueFieldValue`. Requires a classic PAT with `admin:org` (fine-grained PATs get FORBIDDEN for this preview API); degrades gracefully with an actionable `[okffs]` message otherwise ([#91](https://github.com/neturely/okffs/issues/91)).

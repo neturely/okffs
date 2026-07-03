@@ -1,2 +1,0 @@
-<!-- okffs:type=Added -->
-- Priority-aware workflow: `list_issues` now shows each issue's `priority:` and **orders the listing by Priority** (Urgent → High → Medium → Low → unset) so the most important work surfaces first when deciding what to do next. New `OKFFS_DEFAULT_PRIORITY` env var applies a fallback Priority to new issues when `create_issue` isn't given one (mirrors `OKFFS_DEFAULT_LABELS`). Priority is read from a project-native field, or a GitHub org-level Issue Field when `OKFFS_CLASSIC_PAT=true`.

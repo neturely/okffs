@@ -1,2 +1,0 @@
-<!-- okffs:type=Added -->
-- `create_issue` now asks Claude to **infer** an issue's `priority` and `effort` from the task itself (using the common scale), the same way it already infers labels — falling back to `OKFFS_DEFAULT_PRIORITY`/`OKFFS_DEFAULT_EFFORT` only when it can't judge. Toggle per field with `OKFFS_INFER_PRIORITY` / `OKFFS_INFER_EFFORT` (default on). Injecting each board's real option names for accurate inference on non-standard boards is tracked in [#133](https://github.com/neturely/okffs/issues/133).
