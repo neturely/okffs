@@ -9,13 +9,20 @@
 import { graphqlRequest, owner, repo } from "./github.js";
 import { config } from "./config.js";
 
+export interface ProjectSingleSelect {
+  fieldId: string;
+  options: Map<string, string>; // option name → option id
+}
+
 export interface ProjectMetadata {
-  // Single-select field ids + their option maps (option name → option id).
-  // Status is expected on any board; Priority is optional.
+  // Status is kept as a dedicated field because it has special handling
+  // (update_project_status, the initial-status flow). Every single-select field
+  // on the board — including Status, Priority, Effort, and any others — is also
+  // in singleSelectByName, keyed by lowercased name, so generic field handling
+  // (Priority/Effort/…) doesn't need a bespoke entry per field.
   statusFieldId: string | null;
   statusOptions: Map<string, string>;
-  priorityFieldId: string | null;
-  priorityOptions: Map<string, string>;
+  singleSelectByName: Map<string, ProjectSingleSelect>;
 }
 
 // Throw a clear, actionable message when the token can't reach Projects, rather
@@ -106,8 +113,7 @@ async function fetchProjectMetadata(): Promise<ProjectMetadata> {
   const meta: ProjectMetadata = {
     statusFieldId: null,
     statusOptions: new Map(),
-    priorityFieldId: null,
-    priorityOptions: new Map(),
+    singleSelectByName: new Map(),
   };
 
   for (const field of data.node.fields.nodes) {
@@ -116,12 +122,10 @@ async function fetchProjectMetadata(): Promise<ProjectMetadata> {
     if (!field.id || !field.name || !field.options) continue;
     const optionMap = new Map(field.options.map((o) => [o.name, o.id] as const));
     const name = field.name.toLowerCase();
+    meta.singleSelectByName.set(name, { fieldId: field.id, options: optionMap });
     if (name === "status") {
       meta.statusFieldId = field.id;
       meta.statusOptions = optionMap;
-    } else if (name === "priority") {
-      meta.priorityFieldId = field.id;
-      meta.priorityOptions = optionMap;
     }
   }
 
@@ -185,7 +189,7 @@ async function orgFieldCall<T>(fn: () => Promise<T>): Promise<T> {
         "[okffs] GitHub denied access to org-level Issue Fields (organization.issueFields). " +
           "This is a separate permission from Projects: a classic PAT with the `admin:org` scope works; " +
           "fine-grained PATs currently return FORBIDDEN for this preview API. Use an org-capable GITHUB_TOKEN " +
-          "or set the Priority manually in the board UI. " +
+          "or set the field manually in the board UI. " +
           `Original error: ${msg}`
       );
     }
@@ -198,22 +202,28 @@ export interface OrgIssueField {
   options: Map<string, string>; // option name → option id
 }
 
-let orgPriorityCache: Promise<OrgIssueField | null> | null = null;
+// Per-field-name cache so each org Issue Field (Priority, Effort, …) is fetched
+// at most once per process. On failure the entry is cleared so a later call can
+// retry.
+const orgFieldCache = new Map<string, Promise<OrgIssueField | null>>();
 
-// Discover the org's single-select "Priority" Issue Field and its options once
-// per process. Returns null if the owner isn't an org, has no such field, or the
-// field isn't a single-select. Throws (via orgFieldCall) on a permission error.
-export function getOrgIssueFieldPriority(): Promise<OrgIssueField | null> {
-  if (!orgPriorityCache) {
-    orgPriorityCache = fetchOrgIssueFieldPriority().catch((err) => {
-      orgPriorityCache = null;
+// Discover an org single-select Issue Field by name (case-insensitive) and its
+// options. Returns null if the owner isn't an org, has no such field, or it
+// isn't a single-select. Throws (via orgFieldCall) on a permission error.
+export function getOrgIssueField(name: string): Promise<OrgIssueField | null> {
+  const key = name.toLowerCase();
+  let cached = orgFieldCache.get(key);
+  if (!cached) {
+    cached = fetchOrgIssueField(key).catch((err) => {
+      orgFieldCache.delete(key);
       throw err;
     });
+    orgFieldCache.set(key, cached);
   }
-  return orgPriorityCache;
+  return cached;
 }
 
-async function fetchOrgIssueFieldPriority(): Promise<OrgIssueField | null> {
+async function fetchOrgIssueField(nameLower: string): Promise<OrgIssueField | null> {
   const data = await orgFieldCall(() =>
     graphqlRequest<{
       organization: {
@@ -242,17 +252,17 @@ async function fetchOrgIssueFieldPriority(): Promise<OrgIssueField | null> {
   );
 
   const nodes = data.organization?.issueFields?.nodes ?? [];
-  const priority = nodes.find(
+  const match = nodes.find(
     (n) =>
       n.__typename === "IssueFieldSingleSelect" &&
-      (n.name ?? "").toLowerCase() === "priority" &&
+      (n.name ?? "").toLowerCase() === nameLower &&
       n.id &&
       n.options
   );
-  if (!priority?.id || !priority.options) return null;
+  if (!match?.id || !match.options) return null;
   return {
-    fieldId: priority.id,
-    options: new Map(priority.options.map((o) => [o.name, o.id] as const)),
+    fieldId: match.id,
+    options: new Map(match.options.map((o) => [o.name, o.id] as const)),
   };
 }
 
@@ -302,11 +312,11 @@ export async function getProjectItemForIssue(issueNumber: number): Promise<strin
 
 export interface ProjectItemFields {
   status?: string;
-  priority?: string; // project-native Priority field only (org Issue Fields aren't
-                     // exposed on the project item — see getOrgIssuePrioritiesByNumber)
+  priority?: string; // project-native fields only (org Issue Fields aren't exposed
+  effort?: string;   // on the project item — see getOrgIssueFieldValuesByNumber)
 }
 
-// Map of issue number → its board Status + project-native Priority, for
+// Map of issue number → its board Status + project-native Priority/Effort, for
 // list_issues enrichment. Capped at the first 100 board items (matches
 // list_issues' own page size).
 export async function getProjectFieldsByIssueNumber(): Promise<Map<number, ProjectItemFields>> {
@@ -319,6 +329,7 @@ export async function getProjectFieldsByIssueNumber(): Promise<Map<number, Proje
             content: { number?: number } | null;
             status: { name?: string } | null;
             priority: { name?: string } | null;
+            effort: { name?: string } | null;
           }>;
         };
       } | null;
@@ -333,6 +344,9 @@ export async function getProjectFieldsByIssueNumber(): Promise<Map<number, Proje
                   ... on ProjectV2ItemFieldSingleSelectValue { name }
                 }
                 priority:fieldValueByName(name:"Priority"){
+                  ... on ProjectV2ItemFieldSingleSelectValue { name }
+                }
+                effort:fieldValueByName(name:"Effort"){
                   ... on ProjectV2ItemFieldSingleSelectValue { name }
                 }
               }
@@ -351,17 +365,20 @@ export async function getProjectFieldsByIssueNumber(): Promise<Map<number, Proje
     const fields: ProjectItemFields = {};
     if (item.status?.name) fields.status = item.status.name;
     if (item.priority?.name) fields.priority = item.priority.name;
-    if (fields.status || fields.priority) result.set(number, fields);
+    if (item.effort?.name) fields.effort = item.effort.name;
+    if (fields.status || fields.priority || fields.effort) result.set(number, fields);
   }
   return result;
 }
 
-// Map of issue number → org-level Issue Field "Priority" value, for boards whose
-// Priority is an org Issue Field (not a project-native field — those aren't
-// readable off the project item). One batched query over open issues. Needs the
-// org-field permission, so callers gate this on OKFFS_CLASSIC_PAT. Throws (via
-// orgFieldCall) on a permission error; list_issues treats that as non-fatal.
-export async function getOrgIssuePrioritiesByNumber(): Promise<Map<number, string>> {
+// Map of issue number → its org-level Issue Field single-select values, keyed by
+// lowercased field name (e.g. "priority" → "High", "effort" → "Medium"). For
+// boards whose Priority/Effort are org Issue Fields (not project-native fields —
+// those aren't readable off the project item). One batched query over open
+// issues. Needs the org-field permission, so callers gate this on
+// OKFFS_CLASSIC_PAT. Throws (via orgFieldCall) on a permission error; list_issues
+// treats that as non-fatal.
+export async function getOrgIssueFieldValuesByNumber(): Promise<Map<number, Map<string, string>>> {
   const data = await orgFieldCall(() =>
     graphqlRequest<{
       repository: {
@@ -401,12 +418,14 @@ export async function getOrgIssuePrioritiesByNumber(): Promise<Map<number, strin
     )
   );
 
-  const result = new Map<number, string>();
+  const result = new Map<number, Map<string, string>>();
   for (const issue of data.repository?.issues.nodes ?? []) {
-    const pri = issue.issueFieldValues.nodes.find(
-      (v) => v.field?.name === "Priority" && v.name
-    );
-    if (pri?.name) result.set(issue.number, pri.name);
+    const values = new Map<string, string>();
+    for (const v of issue.issueFieldValues.nodes) {
+      const fname = v.field?.name;
+      if (fname && v.name) values.set(fname.toLowerCase(), v.name);
+    }
+    if (values.size) result.set(issue.number, values);
   }
   return result;
 }

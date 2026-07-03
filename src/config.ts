@@ -46,6 +46,9 @@ export const config = {
   // field, or an org Issue Field when OKFFS_CLASSIC_PAT is on; skipped gracefully
   // otherwise. Unset = no priority unless the caller passes one. e.g. "Medium".
   defaultPriority: process.env.OKFFS_DEFAULT_PRIORITY || null,
+  // OKFFS_DEFAULT_EFFORT — same as OKFFS_DEFAULT_PRIORITY, for the board's Effort
+  // field (org Issue Field or project-native). Unset = no effort unless passed.
+  defaultEffort: process.env.OKFFS_DEFAULT_EFFORT || null,
   // OKFFS_PROJECT_INITIAL_STATUS — Status column a freshly auto-added issue
   // should land in (e.g. "Backlog"). Set after the draft PR is created so it
   // wins over GitHub's "PR linked to issue" workflow, which would otherwise flip

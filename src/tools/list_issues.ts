@@ -10,7 +10,7 @@ import {
   type IssueRelationships,
 } from "../github.js";
 import { config } from "../config.js";
-import { getProjectFieldsByIssueNumber, getOrgIssuePrioritiesByNumber } from "../projects.js";
+import { getProjectFieldsByIssueNumber, getOrgIssueFieldValuesByNumber } from "../projects.js";
 
 export const name = "list_issues";
 
@@ -35,24 +35,31 @@ export async function handler(_input: z.infer<typeof inputSchema>) {
   // token lacks the permission), the listing still renders without that field.
   let projectStatus = new Map<number, string>();
   let priorityByIssue = new Map<number, string>();
+  let effortByIssue = new Map<number, string>();
   if (config.projectEnabled && config.projectId) {
     try {
       const fields = await getProjectFieldsByIssueNumber();
       for (const [num, f] of fields) {
         if (f.status) projectStatus.set(num, f.status);
-        if (f.priority) priorityByIssue.set(num, f.priority); // project-native Priority
+        if (f.priority) priorityByIssue.set(num, f.priority); // project-native
+        if (f.effort) effortByIssue.set(num, f.effort);
       }
     } catch (err) {
       console.warn("[okffs] Failed to fetch project fields:", err instanceof Error ? err.message : err);
     }
-    // Org-level Issue Field Priority (Neturely-style boards). Needs the org
-    // permission, so only attempt it when the user has opted into a classic PAT.
+    // Org-level Issue Field values (Priority/Effort on Neturely-style boards).
+    // Needs the org permission, so only attempt when opted into a classic PAT.
     if (config.classicPat) {
       try {
-        const orgPriorities = await getOrgIssuePrioritiesByNumber();
-        for (const [num, p] of orgPriorities) priorityByIssue.set(num, p); // org value wins
+        const orgValues = await getOrgIssueFieldValuesByNumber();
+        for (const [num, vals] of orgValues) {
+          const p = vals.get("priority");
+          const e = vals.get("effort");
+          if (p) priorityByIssue.set(num, p); // org value wins
+          if (e) effortByIssue.set(num, e);
+        }
       } catch (err) {
-        console.warn("[okffs] Failed to fetch org Issue Field priorities:", err instanceof Error ? err.message : err);
+        console.warn("[okffs] Failed to fetch org Issue Field values:", err instanceof Error ? err.message : err);
       }
     }
   }
@@ -112,6 +119,11 @@ export async function handler(_input: z.infer<typeof inputSchema>) {
     const priority = priorityByIssue.get(issue.number);
     if (priority) {
       lines.push(`    priority: ${priority}`);
+    }
+
+    const effort = effortByIssue.get(issue.number);
+    if (effort) {
+      lines.push(`    effort: ${effort}`);
     }
 
     // Relationships as a small tree under the issue.
