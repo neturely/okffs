@@ -5,6 +5,13 @@ See [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-07-04
+### Added
+- publish.yml: create the GitHub Release automatically on stable tags ([#156](https://github.com/neturely/okffs/issues/156))
+- Add OKFFS_PROTECTED_BRANCH — hard confirmation gate before okffs promotes into a protected branch ([#152](https://github.com/neturely/okffs/issues/152))
+### Changed
+- Guidance: agents using okffs should prefer its tools/env over raw gh/git (fallback only) ([#154](https://github.com/neturely/okffs/issues/154))
+
 ## [0.5.0] - 2026-07-04
 ### Changed
 - Rewrote the README for a friendlier first read: a plain-language intro and one-step quickstart up front, the internal build-phase "Status" section removed, and the scattered env-var documentation consolidated into a single Configuration reference table. Development setup, publishing, and codebase-search detail moved to CONTRIBUTING.md (#142).
@@ -95,7 +102,8 @@ See [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `create_pull_request` commits the updated CHANGELOG onto the branch and pushes the branch before opening the PR, with non-blocking error handling ([#38](https://github.com/2b9sa2owa/okffs/issues/38)).
 - All git operations now run via `execFileSync` with argument arrays (no shell), removing command-injection risk from branch names and commit hints; tools also checkout the target branch before committing/pushing and restore the original branch afterward.
 
-[Unreleased]: https://github.com/neturely/okffs/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/neturely/okffs/compare/v0.5.1...HEAD
+[0.5.1]: https://github.com/neturely/okffs/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/neturely/okffs/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/neturely/okffs/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/neturely/okffs/compare/v0.2.2...v0.3.0
