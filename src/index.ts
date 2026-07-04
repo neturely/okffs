@@ -29,11 +29,12 @@ import * as replyToReviewComment from "./tools/reply_to_review_comment.js";
 import * as resolveReviewThread from "./tools/resolve_review_thread.js";
 import * as prepareRelease from "./tools/prepare_release.js";
 import * as updateProjectStatus from "./tools/update_project_status.js";
+import * as setIssueFields from "./tools/set_issue_fields.js";
 
 import * as addressPrReview from "./prompts/address_pr_review.js";
 import * as updateGuidance from "./prompts/update_guidance.js";
 
-const tools = [createIssue, listIssues, closeIssue, deleteIssue, deleteBranch, getIssue, commentIssue, createIssuesFromList, plan, linkIssues, createPullRequest, commitAndUpdate, listPrReviewComments, replyToReviewComment, resolveReviewThread, prepareRelease, updateProjectStatus];
+const tools = [createIssue, listIssues, closeIssue, deleteIssue, deleteBranch, getIssue, commentIssue, createIssuesFromList, plan, linkIssues, createPullRequest, commitAndUpdate, listPrReviewComments, replyToReviewComment, resolveReviewThread, prepareRelease, updateProjectStatus, setIssueFields];
 
 const prompts = [addressPrReview, updateGuidance];
 
@@ -54,7 +55,7 @@ const SERVER_INSTRUCTIONS = `okffs owns the GitHub issue → branch → PR → m
 Common action → tool:
 - Start work: create_issue (also creates the linked branch and writes the **Branch:** line that create_pull_request/commit_and_update rely on). Many at once: create_issues_from_list or plan.
 - Progress: commit_and_update (stage + commit + push + issue comment). Open/finalize a PR: create_pull_request (always adds Closes #N).
-- Board: create_issue sets an inferred priority/effort; move columns with update_project_status (Backlog/Ready/In Progress/Review — Done is GitHub's own automation).
+- Board: create_issue sets an inferred priority/effort at creation; set them on an EXISTING issue with set_issue_fields; move columns with update_project_status (Backlog/Ready/In Progress/Review — Done is GitHub's own automation).
 - PR review: list_pr_review_comments → fix → reply_to_review_comment → resolve_review_thread (honours OKFFS_RESOLVE_THREADS); or the /okffs:address_pr_review prompt.
 - Release: prepare_release (it does NOT tag or publish).
 
