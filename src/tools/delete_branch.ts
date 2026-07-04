@@ -1,7 +1,5 @@
 import { z } from "zod";
 import { addIssueComment, deleteBranch, closeIssue } from "../github.js";
-import { config } from "../config.js";
-import { updateProjectDocs } from "../docs.js";
 
 export const name = "delete_branch";
 
@@ -32,14 +30,9 @@ export async function handler(input: z.infer<typeof inputSchema>) {
   await deleteBranch(input.branch_name);
   await closeIssue(issueNumber);
 
-  if (config.updateDocs) {
-    await updateProjectDocs({
-      trigger: "delete_branch",
-      issueNumber: issueNumber,
-      summary: `Branch \`${input.branch_name}\` deleted and issue #${issueNumber} closed.`,
-      branchName: input.branch_name,
-    });
-  }
+  // No changelog fragment here: deleting a branch is cleanup, not a functionality
+  // change. create_pull_request is the single source of auto-changelog fragments
+  // (matches close_issue's behaviour) — #160.
 
   return {
     content: [{
