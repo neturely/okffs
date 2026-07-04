@@ -16,7 +16,8 @@ import { config } from "../config.js";
 
 export const name = "close_issue";
 
-export const description = "Close a GitHub issue by issue number.";
+export const description =
+  "Close a GitHub issue by issue number. Under OKFFS_AUTO_PR, if the issue's branch still has only an untouched auto-created draft PR (no real commits beyond okffs's init commit), that empty draft PR is also closed and the branch deleted. A ready PR, or any branch with real work, is left untouched.";
 
 export const inputSchema = z.object({
   issue_number: z.number().int().positive().describe("The issue number to close"),
