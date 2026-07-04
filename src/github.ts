@@ -314,6 +314,13 @@ export async function updatePullRequest(
   });
 }
 
+export async function closePullRequest(prNumber: number): Promise<void> {
+  await request(`/repos/${owner}/${repo}/pulls/${prNumber}`, {
+    method: "PATCH",
+    body: JSON.stringify({ state: "closed" }),
+  });
+}
+
 // Mark a draft PR ready for review. The REST update endpoint cannot change the
 // draft flag, so this uses the GraphQL markPullRequestReadyForReview mutation.
 export async function markPullRequestReady(nodeId: string): Promise<void> {
