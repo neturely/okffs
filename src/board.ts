@@ -85,11 +85,18 @@ async function applyBoardSingleSelect(
   // Project-native single-select with resolvable options.
   if (native.options.size > 0) {
     const optionId = native.options.get(value);
-    if (optionId) {
+    if (!optionId) {
+      return skip(`no matching option. Board ${label} options: ${[...native.options.keys()].join(", ")}.`);
+    }
+    // Catch write failures here too — addIssueToBoard's contract is that field
+    // writes never throw, so a failed set must degrade to a surfaced skip rather
+    // than turning a successful board add into a full boardError.
+    try {
       await setProjectFieldValue(itemId, native.fieldId, optionId);
       return { applied: value };
+    } catch (err) {
+      return skip(`write failed — ${err instanceof Error ? err.message : String(err)}`);
     }
-    return skip(`no matching option. Board ${label} options: ${[...native.options.keys()].join(", ")}.`);
   }
   // No options via the project API → it's a GitHub org-level Issue Field.
   if (!config.classicPat) {

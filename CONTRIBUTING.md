@@ -75,11 +75,11 @@ Use conventional commits:
 
 Maintainer only. Requires an npm account with maintainer access to `@neturely/okffs` (published publicly via `publishConfig.access`).
 
-1. **Prepare the release** with the `prepare_release` tool (ask Claude, e.g. *"prepare a release"* or *"prepare release 0.2.0"*). It bumps `package.json` + `package-lock.json`, rolls the CHANGELOG, and opens a release PR. Review and merge it, then merge to `main`.
-2. **Tag and push** the version:
+1. **Prepare the release** with the `prepare_release` tool (ask Claude, e.g. *"prepare a release"* or *"prepare release X.Y.Z"*). It bumps `package.json` + `package-lock.json`, rolls the CHANGELOG, and opens a release PR. Review and merge it, then merge to `main`.
+2. **Tag and push** the version (replace `X.Y.Z` with the release):
    ```bash
-   git tag v0.2.0
-   git push origin v0.2.0
+   git tag vX.Y.Z
+   git push origin vX.Y.Z
    ```
 
 GitHub Actions publishes to npm automatically on semver tags (`v*.*.*`), so **do not run `npm publish` manually** — it would collide with CI. The `NPM_TOKEN` secret must be set in the repository settings. `prepare_release` deliberately stops before tagging so the irreversible publish stays a manual decision.

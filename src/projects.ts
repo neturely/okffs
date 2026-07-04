@@ -215,7 +215,8 @@ async function orgFieldCall<T>(fn: () => Promise<T>): Promise<T> {
       }
     }
   }
-  throw lastErr;
+  // Normalize to an Error so callers' `err instanceof Error` handling is reliable.
+  throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
 }
 
 export interface OrgIssueField {
