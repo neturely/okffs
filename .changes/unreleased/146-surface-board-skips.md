@@ -1,0 +1,2 @@
+<!-- okffs:type=Fixed -->
+- Board Priority/Effort/initial-status steps that are skipped or fail are now surfaced in the tool response instead of only being written to the server's stderr (`console.warn`), which the host and user never see. When a field is requested but not applied (e.g. the board's field is an org-level Issue Field needing a classic PAT, or the value has no matching option), `create_issue`, `create_issues_from_list`, and `plan` now print a `⚠` line explaining why — an enabled board step is never silently dropped (#146).
