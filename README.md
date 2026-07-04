@@ -135,6 +135,7 @@ All optional; unset unless noted. See [`.env.example`](.env.example) for a copya
 | `OKFFS_INFER_PRIORITY` / `OKFFS_INFER_EFFORT` | `true` | Let Claude infer priority/effort from the task. |
 | `OKFFS_PROMPT_METADATA` | `true` | Set `false` to hide the assignees/labels tip. |
 | `OKFFS_BASE_BRANCH` | repo default | Branch new issue branches are created from. |
+| `OKFFS_PROTECTED_BRANCH` | — | A branch okffs must never promote into without explicit user confirmation (e.g. `main`). `create_pull_request` refuses to target it without `confirmed: true`; `prepare_release` flags merging/tagging into it as a manual, user-gated step. |
 | `OKFFS_IDENTIFIER` | — | Prefix for branch names: `{number}-{identifier}-{slug}`. |
 | `OKFFS_AUTO_PR` | `false` | Open a draft PR when a new issue branch is created. |
 | `OKFFS_RESOLVE_THREADS` | `false` | Auto-resolve PR review threads after they're addressed. |
