@@ -7,9 +7,10 @@ See [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [0.5.2] - 2026-07-04
 ### Added
-- create_pull_request fails for issues whose branch wasn't created by okffs (missing **Branch:** link) ([#173](https://github.com/neturely/okffs/issues/173))
-- Add a tool to set board Priority/Effort (and status) on an existing issue ([#171](https://github.com/neturely/okffs/issues/171))
-- Provide MCP server `instructions` so agents prefer okffs tools and adopt new features on upgrade ([#169](https://github.com/neturely/okffs/issues/169))
+- okffs now sends MCP server `instructions` in its `initialize` response, which hosts (Claude Code, etc.) surface to the agent each session — steering it to prefer okffs tools over raw git/gh and to honour the `OKFFS_*` toggles. The brief ships with the package version, so upgrading okffs automatically updates the guidance the agent sees (how new tools get adopted instead of old habits) ([#169](https://github.com/neturely/okffs/issues/169)).
+- New `set_issue_fields` tool sets a board Priority and/or Effort on an **existing** issue (adding it to the board first if needed), handling both project-native single-selects and org-level Issue Fields (classic PAT). `create_issue` only sets these at creation time; Status stays with `update_project_status` ([#171](https://github.com/neturely/okffs/issues/171)).
+### Fixed
+- `create_pull_request` now handles issues whose branch okffs didn't create (no `**Branch:**` line — e.g. pre-okffs issues or a hand-made branch): pass an explicit `branch`, or check out a `{issue-number}-…` branch to have it inferred, and okffs backfills the `**Branch:**` link onto the issue so later calls resolve it ([#173](https://github.com/neturely/okffs/issues/173)).
 
 ## [0.5.1] - 2026-07-04
 ### Added
