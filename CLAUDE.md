@@ -18,6 +18,7 @@ Guidance for Claude Code when working in this repository.
 - **GitHub is the source of truth** for issue state, never local.
 - **Keep the tool surface minimal** — do one thing well per tool.
 - **Destructive actions post a comment to the issue before acting.**
+- **Prefer okffs tools over raw `git`/`gh`.** When an okffs tool covers the action — issues, PRs, comments, review threads (`resolve_review_thread` / the `address_pr_review` prompt), releases (`prepare_release`), project status — use it and honour its env toggles (`OKFFS_RESOLVE_THREADS`, `OKFFS_BASE_BRANCH`, `OKFFS_PROTECTED_BRANCH`, …) rather than re-deriving the behaviour with raw commands. Fall back to raw `git`/`gh` only when no okffs tool fits. Never merge/tag/publish into `OKFFS_PROTECTED_BRANCH` autonomously — hand back to the user.
 
 ### Branch naming
 
