@@ -119,6 +119,10 @@ No installation needed. Add the `.mcp.json` and `.env` to your project as shown 
    ```env
    OKFFS_DEFAULT_ASSIGNEES=your-github-username   # comma-separated
    OKFFS_DEFAULT_LABELS=okffs                     # merged with any inferred labels
+   OKFFS_DEFAULT_PRIORITY=Medium                  # fallback board Priority when create_issue isn't given one
+   OKFFS_DEFAULT_EFFORT=Medium                    # fallback board Effort when create_issue isn't given one
+   OKFFS_INFER_PRIORITY=true                      # let Claude infer priority from the task (falls back to the default)
+   OKFFS_INFER_EFFORT=true                        # let Claude infer effort from the task (falls back to the default)
    OKFFS_PROMPT_METADATA=true                     # set to false to hide the tip
    OKFFS_BASE_BRANCH=main                         # branch to create issues from; defaults to repo default
    OKFFS_IDENTIFIER=okffs                         # optional prefix: branches become {number}-{identifier}-{slug}
@@ -130,6 +134,8 @@ No installation needed. Add the `.mcp.json` and `.env` to your project as shown 
    OKFFS_PROJECT_ENABLED=false                    # set to true to enable the GitHub Projects v2 integration
    OKFFS_PROJECT_ID=                              # the Project's GraphQL node ID (e.g. PVT_kwHO...); required when enabled
    OKFFS_PROJECT_AUTO_ADD=false                   # fallback: create_issue adds new issues to the board (skip if your board auto-adds natively)
+   OKFFS_PROJECT_INITIAL_STATUS=Backlog           # board column a freshly auto-added issue lands in (beats the linked-PR "In Progress" promotion)
+   OKFFS_CLASSIC_PAT=false                        # set true ONLY with a classic admin:org PAT — enables org-level Issue Field Priority/Effort (security tradeoff)
    ```
 
 4. Build and point your `.mcp.json` at the local build:
@@ -153,15 +159,15 @@ No installation needed. Add the `.mcp.json` and `.env` to your project as shown 
 
 | Tool | Description |
 |------|-------------|
-| `create_issue` | Creates a GitHub issue and a matching branch. Infers labels automatically; merges them with `OKFFS_DEFAULT_LABELS`. Supports optional `assignees`, `labels`, and `milestone`. If `OKFFS_AUTO_PR=true`, pushes an empty init commit and opens a draft PR for the branch immediately. |
+| `create_issue` | Creates a GitHub issue and a matching branch. Infers labels automatically; merges them with `OKFFS_DEFAULT_LABELS`. Also infers a board `priority` and `effort` from the task (toggle with `OKFFS_INFER_PRIORITY`/`OKFFS_INFER_EFFORT`, default on), falling back to `OKFFS_DEFAULT_PRIORITY`/`OKFFS_DEFAULT_EFFORT`. Supports optional `assignees`, `labels`, `milestone`, `priority`, `effort`. If `OKFFS_AUTO_PR=true`, pushes an empty init commit and opens a draft PR for the branch immediately. |
 | `create_issues_from_list` | Creates multiple issues and branches from a task list in one shot. Confirms before acting. Per-task `labels`, `assignees`, and `milestone` supported. |
 | `plan` | Takes a free-text description of work plus the issue breakdown Claude generates from it (titles, descriptions, labels, inter-task relationships) and creates all issues + branches in one shot. Two-step confirmation. Wires up relationships between the new issues; opens a draft PR per branch when `OKFFS_AUTO_PR=true`. |
-| `list_issues` | Lists all open issues, each with its issue URL, branch + URL, any linked open/draft PR (matched by head branch), and its relationships (parent, children, blocked-by, blocking) as a tree. |
+| `list_issues` | Lists all open issues, each with its issue URL, branch + URL, any linked open/draft PR (matched by head branch), its board column (`project:`), its `priority:`/`effort:`, and its relationships (parent, children, blocked-by, blocking) as a tree. Ordered by Priority (Urgent → High → Medium → Low → unset) so the most important work surfaces first. |
 | `get_issue` | Fetches full details of an issue — title, body, labels, assignees, branch, and status. |
 | `comment_issue` | Posts a comment to an issue. Useful for logging work done on a branch. |
 | `link_issues` | Links two issues with a relationship — `blocked_by`, `blocking`, or `parent`. Stored in the issue body under a `## Relationships` section. |
 | `close_issue` | Closes a GitHub issue by number. Returns a tip to run `/clear` in Claude Code before starting the next issue. |
-| `create_pull_request` | Creates a PR for an issue branch. Generates title and body from the issue, commits, and comments. If `OKFFS_UPDATE_DOCS=true`, commits the updated CHANGELOG onto the branch; pushes the branch before opening the PR. Always includes `Closes #N`. Posts a summary comment to the issue. |
+| `create_pull_request` | Creates a PR for an issue branch. Generates title and body from the issue, commits, and comments. If `OKFFS_UPDATE_DOCS=true`, writes a per-issue changelog **fragment** under `.changes/unreleased/` (assembled into `CHANGELOG.md` at release time by `prepare_release`) and commits it onto the branch; pushes the branch before opening the PR. Always includes `Closes #N`. Posts a summary comment to the issue. |
 | `commit_and_update` | Stages all changes, builds a commit message from the provided `hint` (or the changed file list), commits, pushes to the issue branch, and posts a rich progress comment to the linked issue. |
 | `list_pr_review_comments` | Fetches a PR's review feedback: inline comment threads (with comment ids, file/line, author, body, resolved state) and review summaries. |
 | `reply_to_review_comment` | Replies to an inline PR review comment thread by id. |
@@ -223,8 +229,18 @@ OKFFS_PROJECT_AUTO_ADD=false        # see "auto-add vs native automation" below
 
 Once enabled:
 
-- **`list_issues`** shows each issue's current board column (e.g. `project: In Progress`).
+- **`list_issues`** shows each issue's current board column (e.g. `project: In Progress`) plus its `priority:` and `effort:`, and orders the listing by Priority.
 - **`update_project_status`** moves an issue between `Backlog`, `Ready`, `In Progress`, and `Review`.
+- **`create_issue`** can set a board `priority`/`effort` (inferred by Claude or from `OKFFS_DEFAULT_PRIORITY`/`OKFFS_DEFAULT_EFFORT`) and land the issue in `OKFFS_PROJECT_INITIAL_STATUS` (e.g. `Backlog`).
+
+### Priority & Effort
+
+okffs sets and reads the board's **Priority** and **Effort** fields. Two field shapes are supported:
+
+- A **project-native single-select** field — works with a standard Projects-capable token.
+- A GitHub **org-level Issue Field** (the newer "Issue field" type shared across an org). These live outside the project and need a **classic PAT with the `admin:org` scope**; set **`OKFFS_CLASSIC_PAT=true`** to opt in. Fine-grained PATs can't reach them yet, so with the flag off okffs skips that path and tells you to set the value in the UI. ⚠️ A classic `admin:org` token is broad — only enable this if you accept that.
+
+Claude **infers** priority/effort from each task by default (like it infers labels), falling back to the `OKFFS_DEFAULT_*` values when it can't judge. Turn inference off per field with `OKFFS_INFER_PRIORITY=false` / `OKFFS_INFER_EFFORT=false`.
 
 ### How Claude drives status transitions
 
@@ -234,7 +250,7 @@ Column moves are **conversational**, not automatic. Claude offers them at the na
 
 ### Auto-add vs native automation
 
-`OKFFS_PROJECT_AUTO_ADD` is a **fallback**. GitHub Projects can natively auto-add issues to a board (Project → Workflows → "Auto-add to project"). If you use that, leave `OKFFS_PROJECT_AUTO_ADD=false` — okffs doesn't need to add issues itself. Only set it to `true` if your board has no native auto-add and you want `create_issue` to place new issues on the board (optionally with an initial `priority`).
+`OKFFS_PROJECT_AUTO_ADD` is a **fallback**. GitHub Projects can natively auto-add issues to a board (Project → Workflows → "Auto-add to project"). If you use that, leave `OKFFS_PROJECT_AUTO_ADD=false` — okffs doesn't need to add issues itself. Only set it to `true` if your board has no native auto-add and you want `create_issue` to place new issues on the board (optionally with an initial `priority`/`effort` and `OKFFS_PROJECT_INITIAL_STATUS` column).
 
 ### Token permission
 
@@ -242,6 +258,8 @@ Projects v2 has no REST API, so okffs uses GraphQL, which needs a Projects-capab
 
 - **Fine-grained PAT** → *Organization permissions* → **Projects: Read and write**
 - **Classic PAT** → the **`project`** scope
+
+Setting a Priority/Effort that is an **org-level Issue Field** additionally needs a **classic PAT with `admin:org`** (plus `OKFFS_CLASSIC_PAT=true`) — fine-grained PATs return `FORBIDDEN` for that preview API. A single classic token with `repo` + `project` + `admin:org` covers everything.
 
 Without it, Projects calls fail with a clear `[okffs]` 403 error naming exactly what's missing. Reads/writes to an **org-level** board require the token to be able to see that org's projects.
 
