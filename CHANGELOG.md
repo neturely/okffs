@@ -4,7 +4,14 @@ All notable changes to this project will be documented in this file.
 See [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+
+## [0.4.0] - 2026-07-03
 ### Added
+- Priority-aware workflow: `list_issues` now shows each issue's `priority:` and **orders the listing by Priority** (Urgent → High → Medium → Low → unset) so the most important work surfaces first when deciding what to do next. New `OKFFS_DEFAULT_PRIORITY` env var applies a fallback Priority to new issues when `create_issue` isn't given one (mirrors `OKFFS_DEFAULT_LABELS`). Priority is read from a project-native field, or a GitHub org-level Issue Field when `OKFFS_CLASSIC_PAT=true`.
+- Effort support, mirroring Priority: `create_issue` accepts an `effort` param (plus `OKFFS_DEFAULT_EFFORT`), and `list_issues` shows each issue's `effort:`. Works with both a project-native Effort field and a GitHub org-level Issue Field (via `OKFFS_CLASSIC_PAT`). The org Issue Field layer was generalized (`getOrgIssueField(name)`, name-keyed project metadata) so Priority, Effort, and any future single-select field share one code path.
+- `create_issue` now asks Claude to **infer** an issue's `priority` and `effort` from the task itself (using the common scale), the same way it already infers labels — falling back to `OKFFS_DEFAULT_PRIORITY`/`OKFFS_DEFAULT_EFFORT` only when it can't judge. Toggle per field with `OKFFS_INFER_PRIORITY` / `OKFFS_INFER_EFFORT` (default on). Injecting each board's real option names for accurate inference on non-standard boards is tracked in [#133](https://github.com/neturely/okffs/issues/133).
+- `OKFFS_CLASSIC_PAT` env flag (default `false`) — gates the org-level Issue Field Priority path (#91) behind an explicit opt-in that declares `GITHUB_TOKEN` is a classic PAT with `admin:org`. When off, okffs skips the org `organization.issueFields` call entirely and tells you to set Priority in the UI, avoiding a doomed API call and keeping the broad-scoped-token requirement opt-in for this public package ([#91](https://github.com/neturely/okffs/issues/91)).
+- `create_issue`'s `priority` now supports GitHub **org-level Issue Fields** (e.g. Priority), not just project-native single-select fields. When the board's Priority field reports no options (the org Issue Field signature), okffs resolves the option via `organization.issueFields` and sets it on the issue with `setIssueFieldValue`. Requires a classic PAT with `admin:org` (fine-grained PATs get FORBIDDEN for this preview API); degrades gracefully with an actionable `[okffs]` message otherwise ([#91](https://github.com/neturely/okffs/issues/91)).
 - `OKFFS_PROJECT_INITIAL_STATUS` — pins a freshly auto-added issue to a chosen board column (e.g. `Backlog`). `create_issue` sets it after the draft PR is created so it wins over GitHub's "PR linked to issue" workflow, which otherwise flips scaffolded issues straight to "In Progress" ([#103](https://github.com/neturely/okffs/issues/103)).
 
 ### Changed
@@ -77,7 +84,8 @@ See [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `create_pull_request` commits the updated CHANGELOG onto the branch and pushes the branch before opening the PR, with non-blocking error handling ([#38](https://github.com/2b9sa2owa/okffs/issues/38)).
 - All git operations now run via `execFileSync` with argument arrays (no shell), removing command-injection risk from branch names and commit hints; tools also checkout the target branch before committing/pushing and restore the original branch afterward.
 
-[Unreleased]: https://github.com/neturely/okffs/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/neturely/okffs/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/neturely/okffs/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/neturely/okffs/compare/v0.2.2...v0.3.0
 [0.2.2]: https://github.com/neturely/okffs/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/neturely/okffs/compare/v0.2.0...v0.2.1
