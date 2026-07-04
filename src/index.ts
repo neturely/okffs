@@ -29,11 +29,12 @@ import * as replyToReviewComment from "./tools/reply_to_review_comment.js";
 import * as resolveReviewThread from "./tools/resolve_review_thread.js";
 import * as prepareRelease from "./tools/prepare_release.js";
 import * as updateProjectStatus from "./tools/update_project_status.js";
+import * as setIssueFields from "./tools/set_issue_fields.js";
 
 import * as addressPrReview from "./prompts/address_pr_review.js";
 import * as updateGuidance from "./prompts/update_guidance.js";
 
-const tools = [createIssue, listIssues, closeIssue, deleteIssue, deleteBranch, getIssue, commentIssue, createIssuesFromList, plan, linkIssues, createPullRequest, commitAndUpdate, listPrReviewComments, replyToReviewComment, resolveReviewThread, prepareRelease, updateProjectStatus];
+const tools = [createIssue, listIssues, closeIssue, deleteIssue, deleteBranch, getIssue, commentIssue, createIssuesFromList, plan, linkIssues, createPullRequest, commitAndUpdate, listPrReviewComments, replyToReviewComment, resolveReviewThread, prepareRelease, updateProjectStatus, setIssueFields];
 
 const prompts = [addressPrReview, updateGuidance];
 
@@ -43,9 +44,26 @@ const version = JSON.parse(
   readFileSync(new URL("../package.json", import.meta.url), "utf8")
 ).version;
 
+// Server-level instructions: the MCP `initialize` result carries this string and
+// hosts (Claude Code, etc.) surface it to the agent every session. It ships with
+// the package version, so upgrading okffs automatically updates the guidance the
+// agent sees — this is how new tools/behaviour get adopted instead of the agent
+// defaulting to raw git/gh (#169). Keep it tight: it's always-on context. This is
+// the machine-visible counterpart to the human-facing README/CLAUDE.md guidance.
+const SERVER_INSTRUCTIONS = `okffs owns the GitHub issue → branch → PR → merge → close workflow (plus, when enabled, a GitHub Projects v2 board and releases). Prefer okffs tools for these actions over raw git/gh/GraphQL: okffs authenticates with GITHUB_TOKEN (use a classic PAT here if org-level Issue Fields are involved) before falling back to the gh CLI, and honours its OKFFS_* env toggles — so hand-rolling git/gh often uses the wrong token or skips okffs conventions.
+
+Common action → tool:
+- Start work: create_issue (also creates the linked branch and writes the **Branch:** line that create_pull_request/commit_and_update rely on). Many at once: create_issues_from_list or plan.
+- Progress: commit_and_update (stage + commit + push + issue comment). Open/finalize a PR: create_pull_request (always adds Closes #N).
+- Board: create_issue sets an inferred priority/effort at creation; set them on an EXISTING issue with set_issue_fields; move columns with update_project_status (Backlog/Ready/In Progress/Review — Done is GitHub's own automation).
+- PR review: list_pr_review_comments → fix → reply_to_review_comment → resolve_review_thread (honours OKFFS_RESOLVE_THREADS); or the /okffs:address_pr_review prompt.
+- Release: prepare_release (it does NOT tag or publish).
+
+Rules: never merge, tag, or publish into OKFFS_PROTECTED_BRANCH autonomously — hand back to the user for sign-off. Destructive tools (delete_issue, delete_branch) require confirmed: true (call once to preview, again to act).`;
+
 const server = new Server(
   { name: "okffs", version },
-  { capabilities: { tools: {}, prompts: {} } }
+  { capabilities: { tools: {}, prompts: {} }, instructions: SERVER_INSTRUCTIONS }
 );
 
 server.setRequestHandler(ListToolsRequestSchema, async () => ({
