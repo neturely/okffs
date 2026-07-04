@@ -7,27 +7,34 @@ import {
   addIssueToBoard,
   applyInitialStatus,
   renderBoardLines,
+  getBoardFieldOptions,
   type BoardAddResult,
   type InitialStatusResult,
 } from "../board.js";
 
 export const name = "create_issue";
 
+const DESCRIPTION_HEAD =
+  "Create a GitHub issue and automatically create a matching branch. Before calling this tool, infer appropriate labels from the issue title and description using GitHub's default labels: bug, documentation, duplicate, enhancement, good first issue, help wanted, invalid, question, wontfix. Pass the inferred labels in the labels parameter unless the user has specified their own.";
+
+const DESCRIPTION_TAIL =
+  " If the user mentions that this issue is blocked by, blocking, or a child of another issue, call link_issues after creating this issue to set the relationship. Returns the issue URL, issue number, and branch name.";
+
 // Priority/Effort inference guidance is woven into the tool description so Claude
 // uses its own judgement to triage the issue it's creating (like it already does
 // for labels), falling back to OKFFS_DEFAULT_* only when it can't tell. Toggle per
-// field with OKFFS_INFER_PRIORITY / OKFFS_INFER_EFFORT (default on).
-function inferenceGuidance(): string {
+// field with OKFFS_INFER_PRIORITY / OKFFS_INFER_EFFORT (default on). When the
+// board's real option names are known they replace the generic scale so Claude
+// infers against the actual options (#133) — e.g. a P0/P1/P2 board.
+function inferenceGuidance(priorityOpts?: string[] | null, effortOpts?: string[] | null): string {
   const bits: string[] = [];
   if (config.inferPriority) {
-    bits.push(
-      "infer a `priority` for the issue from its urgency and impact (typical scale: Urgent, High, Medium, Low)"
-    );
+    const scale = priorityOpts?.length ? priorityOpts.join(", ") : "Urgent, High, Medium, Low";
+    bits.push(`infer a \`priority\` for the issue from its urgency and impact (board options: ${scale})`);
   }
   if (config.inferEffort) {
-    bits.push(
-      "infer an `effort` from the expected amount of work (typical scale: High, Medium, Low)"
-    );
+    const scale = effortOpts?.length ? effortOpts.join(", ") : "High, Medium, Low";
+    bits.push(`infer an \`effort\` from the expected amount of work (board options: ${scale})`);
   }
   if (bits.length === 0) return "";
   return (
@@ -36,10 +43,24 @@ function inferenceGuidance(): string {
   );
 }
 
-export const description =
-  "Create a GitHub issue and automatically create a matching branch. Before calling this tool, infer appropriate labels from the issue title and description using GitHub's default labels: bug, documentation, duplicate, enhancement, good first issue, help wanted, invalid, question, wontfix. Pass the inferred labels in the labels parameter unless the user has specified their own." +
-  inferenceGuidance() +
-  " If the user mentions that this issue is blocked by, blocking, or a child of another issue, call link_issues after creating this issue to set the relationship. Returns the issue URL, issue number, and branch name.";
+// Static description (generic scale) — the safe fallback used before the board is
+// reachable and whenever real options can't be read.
+export const description = DESCRIPTION_HEAD + inferenceGuidance() + DESCRIPTION_TAIL;
+
+// Dynamic description resolved at tools/list time (index.ts awaits this). When
+// auto-add is on and inference is enabled, inject the board's real Priority/Effort
+// option names so Claude infers against them (#133). Any miss falls back to the
+// static description. Cheap after the first call — board metadata is memoized.
+export async function getDescription(): Promise<string> {
+  if (!boardAutoAddEnabled()) return description;
+  if (!config.inferPriority && !config.inferEffort) return description;
+  const [priorityOpts, effortOpts] = await Promise.all([
+    config.inferPriority ? getBoardFieldOptions("Priority") : Promise.resolve(null),
+    config.inferEffort ? getBoardFieldOptions("Effort") : Promise.resolve(null),
+  ]);
+  if (!priorityOpts && !effortOpts) return description;
+  return DESCRIPTION_HEAD + inferenceGuidance(priorityOpts, effortOpts) + DESCRIPTION_TAIL;
+}
 
 export const inputSchema = z.object({
   title: z.string().describe("Issue title"),

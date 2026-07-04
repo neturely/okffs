@@ -37,6 +37,29 @@ export function boardAutoAddEnabled(): boolean {
   return Boolean(config.projectAutoAdd && config.projectEnabled);
 }
 
+// The board's real option names for a single-select field (e.g. "Priority") —
+// project-native options if present, otherwise the org-level Issue Field options
+// (only readable with a classic PAT). Returns null when the board is unreachable,
+// the field is absent, or its options can't be read — callers then fall back to a
+// generic scale. Cheap after the first call (metadata + org field are memoized).
+// Used to inject real options into create_issue's inference guidance (#133).
+export async function getBoardFieldOptions(label: string): Promise<string[] | null> {
+  try {
+    const meta = await getProjectMetadata();
+    const native = meta.singleSelectByName.get(label.toLowerCase());
+    if (native && native.options.size > 0) return [...native.options.keys()];
+    // No project-native options → it's an org-level Issue Field, readable only
+    // with a classic admin:org PAT (#91). Skip otherwise.
+    if (config.classicPat) {
+      const orgField = await getOrgIssueField(label);
+      if (orgField && orgField.options.size > 0) return [...orgField.options.keys()];
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 // Set a board single-select field (Priority, Effort, …) to `value`. Handles both
 // shapes: a project-native single-select (set on the project item), and a GitHub
 // org-level Issue Field (project field reports no options → set on the issue via
