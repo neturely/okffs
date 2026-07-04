@@ -7,6 +7,11 @@ export const config = {
     ? process.env.OKFFS_DEFAULT_LABELS.split(",").map((s) => s.trim())
     : [],
   baseBranch: process.env.OKFFS_BASE_BRANCH || null,
+  // OKFFS_PROTECTED_BRANCH — a branch that okffs must never promote into without
+  // explicit user confirmation (e.g. `main`). create_pull_request refuses to
+  // target it without confirmed:true, and prepare_release names it as a manual,
+  // user-gated step. Guards against an agent auto-driving a full release (#152).
+  protectedBranch: process.env.OKFFS_PROTECTED_BRANCH || null,
   // OKFFS_IDENTIFIER — optional project-scoped prefix inserted into branch names:
   // {issue-number}-{identifier}-{slug} instead of {issue-number}-{slug}
   identifier: process.env.OKFFS_IDENTIFIER || null,
