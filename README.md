@@ -61,6 +61,7 @@ Claude infers labels (`bug`, `enhancement`, …) from the title and description 
 | `resolve_review_thread` | Resolves a review thread — only when `OKFFS_RESOLVE_THREADS=true`. |
 | `prepare_release` | Bumps the version, rolls the CHANGELOG, commits on a release branch, and opens a PR. Confirms first; does not tag or publish. |
 | `update_project_status` | Moves an issue between board columns (`Backlog`, `Ready`, `In Progress`, `Review`). Needs `OKFFS_PROJECT_ENABLED`. |
+| `set_issue_fields` | Sets board Priority/Effort on an **existing** issue (adds it to the board first if needed) — handles project-native and org-level Issue Fields. `create_issue` only sets these at creation; use this afterwards. Status stays with `update_project_status`. |
 | `delete_issue` | Closes an issue **and** deletes its branch. Destructive — needs `confirmed: true`. |
 | `delete_branch` | Deletes a branch **and** closes its issue. Destructive — needs `confirmed: true`. |
 
