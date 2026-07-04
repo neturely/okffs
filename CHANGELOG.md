@@ -11,6 +11,9 @@ See [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Add OKFFS_PROTECTED_BRANCH — hard confirmation gate before okffs promotes into a protected branch ([#152](https://github.com/neturely/okffs/issues/152))
 ### Changed
 - Guidance: agents using okffs should prefer its tools/env over raw gh/git (fallback only) ([#154](https://github.com/neturely/okffs/issues/154))
+### Fixed
+- `delete_branch` and `delete_issue` no longer write changelog fragments for pure cleanup — `create_pull_request` remains the single source of auto-changelog entries, matching `close_issue` ([#160](https://github.com/neturely/okffs/issues/160)).
+- `close_issue` now cleans up an untouched `OKFFS_AUTO_PR` draft: when an issue is closed with no work, its empty draft PR is closed and the branch deleted (a ready PR, or a branch with real commits, is left untouched) ([#162](https://github.com/neturely/okffs/issues/162)).
 
 ## [0.5.0] - 2026-07-04
 ### Changed
