@@ -16,6 +16,7 @@ export async function handler(input: z.infer<typeof inputSchema>) {
     title: string;
     html_url: string;
     body: string | null;
+    node_id: string;
     state: string;
     labels: Array<{ name: string }>;
     assignees: Array<{ login: string }>;
