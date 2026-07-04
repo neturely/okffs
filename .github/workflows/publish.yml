@@ -87,45 +87,6 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-      # ---- GitHub Release (all tags; prereleases flagged) — #156 -------------
-      # Create the GitHub Release from the pushed tag so it never has to be done
-      # by hand. Notes come from the matching CHANGELOG.md section, falling back
-      # to auto-generated notes. Idempotent: skips if the release already exists
-      # (a maintainer may have created it manually). Stable → --latest;
-      # prerelease → --prerelease, mirroring the npm dist-tag split above.
-      - name: Create GitHub Release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          version="${{ steps.pkg.outputs.version }}"
-          tag="$GITHUB_REF_NAME"
-          if gh release view "$tag" >/dev/null 2>&1; then
-            echo "::notice::Release $tag already exists — skipping creation."
-            exit 0
-          fi
-          # Extract the "## [version]" section from CHANGELOG.md (up to the next
-          # "## [" heading) for the release body.
-          notes="$(awk -v v="$version" '
-            index($0, "## [" v "]") == 1 { f=1; next }
-            f && index($0, "## [") == 1 { exit }
-            f { print }
-          ' CHANGELOG.md)"
-          args=(--title "$tag")
-          if [ -n "$(printf '%s' "$notes" | tr -d '[:space:]')" ]; then
-            printf '%s\n' "$notes" > "$RUNNER_TEMP/relnotes.md"
-            args+=(--notes-file "$RUNNER_TEMP/relnotes.md")
-          else
-            echo "::warning::No CHANGELOG section found for $version — using auto-generated notes."
-            args+=(--generate-notes)
-          fi
-          if [ "${{ steps.pkg.outputs.prerelease }}" = "true" ]; then
-            args+=(--prerelease)
-          else
-            args+=(--latest)
-          fi
-          gh release create "$tag" "${args[@]}"
-          echo "::notice::Created GitHub Release $tag."
-
       # ---- MCP Registry (io.github.neturely/okffs) — stable releases only ----
       - name: Sync server.json version to package.json
         if: steps.pkg.outputs.prerelease == 'false'
@@ -158,3 +119,45 @@ jobs:
       - name: Prerelease summary
         if: steps.pkg.outputs.prerelease == 'true'
         run: echo "::notice::Prerelease ${{ steps.pkg.outputs.version }} published to npm dist-tag 'next'. MCP Registry publish skipped (stable-only)."
+
+      # ---- GitHub Release (all tags; prereleases flagged) — #156 -------------
+      # Runs LAST — after npm AND the MCP Registry publish — so a Release is only
+      # created once the whole publish pipeline has succeeded; a failed registry
+      # publish shouldn't leave a Release that looks "done". Notes come from the
+      # matching CHANGELOG.md section; idempotent (skips if the release exists).
+      # Stable → --latest; prerelease → --prerelease.
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="${{ steps.pkg.outputs.version }}"
+          tag="$GITHUB_REF_NAME"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "::notice::Release $tag already exists — skipping creation."
+            exit 0
+          fi
+          # Extract the "## [version]" section: from its heading to the next
+          # "## [" version heading OR the Keep-a-Changelog link-reference block
+          # (lines like "[1.2.3]: https://..."), so a section that is last in the
+          # file doesn't slurp the footer link definitions into the notes.
+          notes="$(awk -v v="$version" '
+            index($0, "## [" v "]") == 1 { f=1; next }
+            f && index($0, "## [") == 1 { exit }
+            f && /^\[[^]]+\]: / { exit }
+            f { print }
+          ' CHANGELOG.md)"
+          args=(--title "$tag")
+          if [ -n "$(printf '%s' "$notes" | tr -d '[:space:]')" ]; then
+            printf '%s\n' "$notes" > "$RUNNER_TEMP/relnotes.md"
+            args+=(--notes-file "$RUNNER_TEMP/relnotes.md")
+          else
+            echo "::warning::No CHANGELOG section found for $version — using auto-generated notes."
+            args+=(--generate-notes)
+          fi
+          if [ "${{ steps.pkg.outputs.prerelease }}" = "true" ]; then
+            args+=(--prerelease)
+          else
+            args+=(--latest)
+          fi
+          gh release create "$tag" "${args[@]}"
+          echo "::notice::Created GitHub Release $tag."
