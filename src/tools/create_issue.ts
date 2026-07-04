@@ -2,68 +2,14 @@ import { z } from "zod";
 import { createIssue, updateIssueBody, getDefaultBranch, getRef, createBranch, buildBranchName, createDraftPullRequest } from "../github.js";
 import { config } from "../config.js";
 import { git, currentBranch } from "../git.js";
-import { addIssueToProject, getProjectMetadata, setProjectFieldValue, getOrgIssueField, setIssueFieldSingleSelect, type ProjectMetadata } from "../projects.js";
-
-// Outcome of a board field write: either the value was applied, or it was
-// skipped for a reason. The reason is threaded back to the tool response (not
-// just console.warn'd to the server's stderr, which the host/user never sees —
-// see #146) so an enabled-but-skipped field is never silent.
-type BoardFieldOutcome = { applied: string } | { skipped: string };
-
-// Set a board single-select field (Priority, Effort, …) to `value`. Handles both
-// shapes: a project-native single-select (set on the project item), and a GitHub
-// org-level Issue Field (project field reports no options → set on the issue via
-// setIssueFieldSingleSelect, gated on OKFFS_CLASSIC_PAT — #91). Non-fatal: returns
-// a { skipped: reason } on any miss and { applied } on success. Also warns to
-// stderr for server logs, but the returned reason is what the caller surfaces.
-async function applyBoardSingleSelect(
-  label: string,
-  value: string,
-  itemId: string,
-  issueNodeId: string,
-  meta: ProjectMetadata
-): Promise<BoardFieldOutcome> {
-  const skip = (reason: string): BoardFieldOutcome => {
-    console.warn(`[okffs] ${label} "${value}" not set: ${reason}`);
-    return { skipped: reason };
-  };
-
-  const native = meta.singleSelectByName.get(label.toLowerCase());
-  if (!native) {
-    return skip(`the board has no ${label} field.`);
-  }
-  // Project-native single-select with resolvable options.
-  if (native.options.size > 0) {
-    const optionId = native.options.get(value);
-    if (optionId) {
-      await setProjectFieldValue(itemId, native.fieldId, optionId);
-      return { applied: value };
-    }
-    return skip(`no matching option. Board ${label} options: ${[...native.options.keys()].join(", ")}.`);
-  }
-  // No options via the project API → it's a GitHub org-level Issue Field.
-  if (!config.classicPat) {
-    return skip(
-      `the board's ${label} is an org-level Issue Field, which okffs can only set with a classic ` +
-        `PAT (\`admin:org\`) and OKFFS_CLASSIC_PAT=true (security tradeoff — see docs). Set it in the board UI for now.`
-    );
-  }
-  try {
-    const orgField = await getOrgIssueField(label);
-    if (!orgField) {
-      return skip(`no org-level ${label} Issue Field found.`);
-    }
-    const orgOptionId = orgField.options.get(value);
-    if (!orgOptionId) {
-      return skip(`no matching org Issue Field option. Options: ${[...orgField.options.keys()].join(", ")}.`);
-    }
-    await setIssueFieldSingleSelect(issueNodeId, orgField.fieldId, orgOptionId);
-    return { applied: value };
-  } catch (err) {
-    // Permission (fine-grained PAT FORBIDDEN) / preview-API errors — never fatal.
-    return skip(`org Issue Field write failed — ${err instanceof Error ? err.message : String(err)}`);
-  }
-}
+import {
+  boardAutoAddEnabled,
+  addIssueToBoard,
+  applyInitialStatus,
+  renderBoardLines,
+  type BoardAddResult,
+  type InitialStatusResult,
+} from "../board.js";
 
 export const name = "create_issue";
 
@@ -130,29 +76,15 @@ export async function handler(input: z.infer<typeof inputSchema>) {
   await updateIssueBody(issue.number, updatedBody);
 
   // Add the issue to the configured Project board (fallback for users without
-  // native board automation). Non-fatal, mirroring the autoPR block below: any
-  // failure warns with an [okffs] prefix and never blocks issue creation.
-  let addedToBoard = false;
-  let priorityOutcome: BoardFieldOutcome | null = null;
-  let effortOutcome: BoardFieldOutcome | null = null;
+  // native board automation) and set Priority/Effort. Non-fatal, mirroring the
+  // autoPR block below: any failure warns with an [okffs] prefix, is surfaced in
+  // the response, and never blocks issue creation. Initial Status is applied
+  // later (after the draft PR) — see the applyInitialStatus call below.
+  let boardAdd: BoardAddResult | null = null;
   let boardError: string | null = null;
-  let boardItemId: string | null = null;
-  if (config.projectAutoAdd && config.projectEnabled) {
+  if (boardAutoAddEnabled()) {
     try {
-      const itemId = await addIssueToProject(issue.node_id);
-      boardItemId = itemId;
-      addedToBoard = true;
-      // Priority and Effort are set the same way — project-native single-select,
-      // or a GitHub org-level Issue Field when OKFFS_CLASSIC_PAT is on (#91).
-      if (resolvedPriority || resolvedEffort) {
-        const meta = await getProjectMetadata();
-        if (resolvedPriority) {
-          priorityOutcome = await applyBoardSingleSelect("Priority", resolvedPriority, itemId, issue.node_id, meta);
-        }
-        if (resolvedEffort) {
-          effortOutcome = await applyBoardSingleSelect("Effort", resolvedEffort, itemId, issue.node_id, meta);
-        }
-      }
+      boardAdd = await addIssueToBoard(issue.node_id, { priority: resolvedPriority, effort: resolvedEffort });
     } catch (err) {
       boardError = err instanceof Error ? err.message : String(err);
       console.warn("[okffs] Failed to add issue to project board:", boardError);
@@ -201,28 +133,9 @@ export async function handler(input: z.infer<typeof inputSchema>) {
   // issue to "In Progress". Setting our intended status here lets it win that
   // race so freshly-created issues land where okffs means them to (#103).
   // Non-fatal, like the rest of the board handling.
-  let initialStatusApplied: string | null = null;
-  let initialStatusSkipped: string | null = null;
-  if (config.projectInitialStatus && boardItemId) {
-    try {
-      const meta = await getProjectMetadata();
-      const optionId = meta.statusFieldId
-        ? meta.statusOptions.get(config.projectInitialStatus)
-        : undefined;
-      if (meta.statusFieldId && optionId) {
-        await setProjectFieldValue(boardItemId, meta.statusFieldId, optionId);
-        initialStatusApplied = config.projectInitialStatus;
-      } else if (!meta.statusFieldId) {
-        initialStatusSkipped = "the board has no Status field.";
-      } else {
-        initialStatusSkipped = `no matching Status option. Board Status options: ${[...meta.statusOptions.keys()].join(", ")}.`;
-      }
-    } catch (err) {
-      initialStatusSkipped = `Status write failed — ${err instanceof Error ? err.message : String(err)}`;
-    }
-    if (initialStatusSkipped) {
-      console.warn(`[okffs] initial status "${config.projectInitialStatus}" not set: ${initialStatusSkipped}`);
-    }
+  let initialStatus: InitialStatusResult | null = null;
+  if (boardAdd) {
+    initialStatus = await applyInitialStatus(boardAdd.itemId);
   }
 
   const lines = [
@@ -244,32 +157,19 @@ export async function handler(input: z.infer<typeof inputSchema>) {
     lines.push(`Labels: ${resolvedLabels.join(", ")}${source}`);
   }
 
-  if (addedToBoard) {
-    const bits = [
-      priorityOutcome && "applied" in priorityOutcome ? `priority: ${priorityOutcome.applied}` : null,
-      effortOutcome && "applied" in effortOutcome ? `effort: ${effortOutcome.applied}` : null,
-      initialStatusApplied ? `status: ${initialStatusApplied}` : null,
-    ].filter(Boolean);
-    lines.push(
-      `Board: added to the project${bits.length ? ` (${bits.join(", ")})` : ""}`
-    );
-    // Surface any requested-but-not-applied field so an enabled board step is
-    // never silently dropped (the issue is still created fine) — see #146.
-    const skips = [
-      priorityOutcome && "skipped" in priorityOutcome ? `Priority "${resolvedPriority}" not set — ${priorityOutcome.skipped}` : null,
-      effortOutcome && "skipped" in effortOutcome ? `Effort "${resolvedEffort}" not set — ${effortOutcome.skipped}` : null,
-      initialStatusSkipped ? `Initial status "${config.projectInitialStatus}" not set — ${initialStatusSkipped}` : null,
-    ].filter(Boolean);
-    for (const s of skips) lines.push(`  ⚠ ${s}`);
-  } else if (boardError) {
-    // Auto-add was enabled but failed. Surface it here (not just the server log)
-    // so it isn't invisible — the issue was still created successfully, which
-    // otherwise makes an empty board look like it worked. See #101.
-    lines.push(
-      `Board: NOT added — auto-add is on but failed. The issue itself was created fine.`,
-      `  ${boardError}`
-    );
-  }
+  const addedToBoard = Boolean(boardAdd);
+  lines.push(
+    ...renderBoardLines({
+      addedToBoard,
+      boardError,
+      requestedPriority: resolvedPriority,
+      priority: boardAdd?.priority ?? null,
+      requestedEffort: resolvedEffort,
+      effort: boardAdd?.effort ?? null,
+      requestedStatus: config.projectInitialStatus,
+      initialStatus,
+    })
+  );
 
   lines.push(
     ``,
@@ -281,7 +181,7 @@ export async function handler(input: z.infer<typeof inputSchema>) {
   // Conversational nudge: prompt the host LLM to offer moving the issue into
   // the "In Progress" column via update_project_status once work begins.
   if (addedToBoard) {
-    const where = initialStatusApplied ? `"${initialStatusApplied}"` : "its default column";
+    const where = initialStatus?.applied ? `"${initialStatus.applied}"` : "its default column";
     lines.push(
       ``,
       `This issue is on the board in ${where}. Want me to move it to "In Progress" and start? ` +
