@@ -5,6 +5,12 @@ See [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.5.2] - 2026-07-04
+### Added
+- create_pull_request fails for issues whose branch wasn't created by okffs (missing **Branch:** link) ([#173](https://github.com/neturely/okffs/issues/173))
+- Add a tool to set board Priority/Effort (and status) on an existing issue ([#171](https://github.com/neturely/okffs/issues/171))
+- Provide MCP server `instructions` so agents prefer okffs tools and adopt new features on upgrade ([#169](https://github.com/neturely/okffs/issues/169))
+
 ## [0.5.1] - 2026-07-04
 ### Added
 - publish.yml: create the GitHub Release automatically on stable tags ([#156](https://github.com/neturely/okffs/issues/156))
@@ -105,7 +111,8 @@ See [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `create_pull_request` commits the updated CHANGELOG onto the branch and pushes the branch before opening the PR, with non-blocking error handling ([#38](https://github.com/2b9sa2owa/okffs/issues/38)).
 - All git operations now run via `execFileSync` with argument arrays (no shell), removing command-injection risk from branch names and commit hints; tools also checkout the target branch before committing/pushing and restore the original branch afterward.
 
-[Unreleased]: https://github.com/neturely/okffs/compare/v0.5.1...HEAD
+[Unreleased]: https://github.com/neturely/okffs/compare/v0.5.2...HEAD
+[0.5.2]: https://github.com/neturely/okffs/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/neturely/okffs/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/neturely/okffs/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/neturely/okffs/compare/v0.3.0...v0.4.0
