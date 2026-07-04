@@ -29,7 +29,7 @@ export async function handler(input: z.infer<typeof inputSchema>) {
 
   const issue = await getIssue(input.issue_number);
 
-  let result;
+  let result: Awaited<ReturnType<typeof addIssueToBoard>>;
   try {
     // addIssueToBoard adds the issue to the board (idempotent — returns the
     // existing item if already present) and sets Priority/Effort via the shared,

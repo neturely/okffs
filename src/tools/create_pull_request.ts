@@ -40,11 +40,13 @@ export async function handler(input: z.infer<typeof inputSchema>) {
   // calls resolve it automatically (#173).
   if (!branchName) {
     const current = currentBranch();
-    const inferred = current && new RegExp(`^${input.issue_number}-`).test(current) ? current : null;
+    const inferred = current && current.startsWith(`${input.issue_number}-`) ? current : null;
     const fallback = input.branch ?? inferred;
     if (fallback) {
       branchName = fallback;
-      const base = (issue.body ?? "").trim();
+      // trimEnd only — trimming both ends could strip leading whitespace the user
+      // intentionally put in the issue body.
+      const base = (issue.body ?? "").trimEnd();
       const newBody = base ? `${base}\n\n**Branch:** \`${branchName}\`` : `**Branch:** \`${branchName}\``;
       try {
         await updateIssueBody(input.issue_number, newBody);
