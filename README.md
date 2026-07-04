@@ -154,6 +154,7 @@ All optional; unset unless noted. See [`.env.example`](.env.example) for a copya
 - **PRs:** titled `Close #42 - Add hero section to homepage`; the body always includes `Closes #42`. GitHub auto-closes the issue when the PR merges into the repo's **default branch**. If `OKFFS_BASE_BRANCH` points at a non-default branch (e.g. `develop`), close the issue manually with `close_issue` — `create_pull_request` flags this.
 - Destructive tools require `confirmed: true`; bulk-creating tools confirm first.
 - GitHub is always the source of truth for issue state — never local.
+- **Prefer okffs tools over raw `git`/`gh`.** When an okffs tool covers the action — issues, PRs, comments, review threads (`resolve_review_thread` / `address_pr_review`), releases, project status — use it and honour its env toggles (`OKFFS_RESOLVE_THREADS`, `OKFFS_BASE_BRANCH`, `OKFFS_PROTECTED_BRANCH`, …) rather than re-deriving the behaviour. Fall back to raw `git`/`gh` only when no okffs tool fits.
 
 ## Contributing
 
