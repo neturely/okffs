@@ -10,11 +10,19 @@ import {
 } from "../github.js";
 import { config } from "../config.js";
 import { git, currentBranch } from "../git.js";
+import {
+  boardAutoAddEnabled,
+  addIssueToBoard,
+  applyInitialStatus,
+  renderBoardLines,
+  type BoardAddResult,
+  type InitialStatusResult,
+} from "../board.js";
 
 export const name = "plan";
 
 export const description =
-  "Plan a piece of work and create all the resulting GitHub issues (with branches, and draft PRs when OKFFS_AUTO_PR=true) in one shot. Given a free-text description of the work, break it down yourself into a structured list of issues — each with a title, description, inferred labels, and any relationships between them — and pass that breakdown as the tasks array. Infer labels from GitHub's defaults: bug, documentation, duplicate, enhancement, good first issue, help wanted, invalid, question, wontfix. Express dependencies via per-task relationships, referencing other tasks by their 1-based position in the list. Two-step confirmation: call once to preview the plan, then re-call with confirmed: true to create everything.";
+  "Plan a piece of work and create all the resulting GitHub issues (with branches, draft PRs when OKFFS_AUTO_PR=true, and board placement when OKFFS_PROJECT_AUTO_ADD=true) in one shot. Given a free-text description of the work, break it down yourself into a structured list of issues — each with a title, description, inferred labels, an inferred priority/effort where you can judge it, and any relationships between them — and pass that breakdown as the tasks array. Infer labels from GitHub's defaults: bug, documentation, duplicate, enhancement, good first issue, help wanted, invalid, question, wontfix. Express dependencies via per-task relationships, referencing other tasks by their 1-based position in the list. Two-step confirmation: call once to preview the plan, then re-call with confirmed: true to create everything.";
 
 const relationshipSchema = z.object({
   type: z
@@ -35,6 +43,12 @@ const taskSchema = z.object({
   assignees: z.array(z.string()).optional().describe("GitHub usernames to assign"),
   labels: z.array(z.string()).optional().describe("Labels to apply to this issue"),
   milestone: z.number().int().optional().describe("Milestone number to assign"),
+  priority: z.string().optional().describe(
+    "Optional Project board Priority (e.g. Urgent, High, Medium, Low). Only applied when OKFFS_PROJECT_AUTO_ADD=true; falls back to OKFFS_DEFAULT_PRIORITY when omitted."
+  ),
+  effort: z.string().optional().describe(
+    "Optional Project board Effort (e.g. High, Medium, Low). Only applied when OKFFS_PROJECT_AUTO_ADD=true; falls back to OKFFS_DEFAULT_EFFORT when omitted."
+  ),
   relationships: z
     .array(relationshipSchema)
     .optional()
@@ -98,11 +112,18 @@ export async function handler(input: z.infer<typeof inputSchema>) {
     branchName: string;
     body: string;
     relationships: z.infer<typeof relationshipSchema>[];
+    resolvedPriority?: string | null;
+    resolvedEffort?: string | null;
+    boardAdd: BoardAddResult | null;
+    boardError: string | null;
+    initialStatus: InitialStatusResult | null;
   }> = [];
 
   for (const task of input.tasks) {
     const resolvedAssignees = task.assignees ?? config.defaultAssignees;
     const resolvedLabels = [...new Set([...(task.labels ?? []), ...config.defaultLabels])];
+    const resolvedPriority = task.priority ?? config.defaultPriority;
+    const resolvedEffort = task.effort ?? config.defaultEffort;
 
     const issue = await createIssue(
       task.title,
@@ -117,12 +138,31 @@ export async function handler(input: z.infer<typeof inputSchema>) {
     const body = `${task.description}\n\n**Branch:** \`${branchName}\``;
     await updateIssueBody(issue.number, body);
 
+    // Add to the board + set Priority/Effort now; the initial Status is applied
+    // in a later pass, after any draft PR, so it wins GitHub's linked-PR
+    // "In Progress" promotion (#103). Non-fatal and surfaced per issue (#144).
+    let boardAdd: BoardAddResult | null = null;
+    let boardError: string | null = null;
+    if (boardAutoAddEnabled()) {
+      try {
+        boardAdd = await addIssueToBoard(issue.node_id, { priority: resolvedPriority, effort: resolvedEffort });
+      } catch (err) {
+        boardError = err instanceof Error ? err.message : String(err);
+        console.warn(`[okffs] Failed to add #${issue.number} to project board:`, boardError);
+      }
+    }
+
     created.push({
       number: issue.number,
       html_url: issue.html_url,
       branchName,
       body,
       relationships: task.relationships ?? [],
+      resolvedPriority,
+      resolvedEffort,
+      boardAdd,
+      boardError,
+      initialStatus: null,
     });
   }
 
@@ -172,10 +212,10 @@ export async function handler(input: z.infer<typeof inputSchema>) {
       }
     }
 
-    for (const entry of created) {
+    for (const [i, entry] of created.entries()) {
       try {
         const pr = await createDraftPullRequest(
-          `WIP: #${entry.number} - ${input.tasks[created.indexOf(entry)].title}`,
+          `WIP: #${entry.number} - ${input.tasks[i].title}`,
           `Closes #${entry.number}`,
           entry.branchName,
           defaultBranch
@@ -190,15 +230,36 @@ export async function handler(input: z.infer<typeof inputSchema>) {
     }
   }
 
-  const results = created.map((entry) => {
+  // Apply the initial board Status now — after any draft PR — so it wins the
+  // linked-PR "In Progress" promotion, matching create_issue's ordering (#103).
+  for (const entry of created) {
+    if (entry.boardAdd) {
+      entry.initialStatus = await applyInitialStatus(entry.boardAdd.itemId);
+    }
+  }
+
+  const results = created.map((entry, i) => {
     const lines = [
-      `#${entry.number} — ${input.tasks[created.indexOf(entry)].title}`,
+      `#${entry.number} — ${input.tasks[i].title}`,
       `  Branch: \`${entry.branchName}\``,
       `  ${entry.html_url}`,
     ];
     if (draftPRs[entry.number]) {
       lines.push(`  Draft PR: ${draftPRs[entry.number]}`);
     }
+    lines.push(
+      ...renderBoardLines({
+        addedToBoard: Boolean(entry.boardAdd),
+        boardError: entry.boardError,
+        requestedPriority: entry.resolvedPriority,
+        priority: entry.boardAdd?.priority ?? null,
+        requestedEffort: entry.resolvedEffort,
+        effort: entry.boardAdd?.effort ?? null,
+        requestedStatus: config.projectInitialStatus,
+        initialStatus: entry.initialStatus,
+        indent: "  ",
+      })
+    );
     return lines.join("\n");
   });
 

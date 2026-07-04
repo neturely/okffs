@@ -73,7 +73,24 @@ Use conventional commits:
 
 ## Publishing
 
-Maintainer only. Bump `package.json` version, merge to `main`, tag with `vX.Y.Z` — GitHub Actions handles the npm publish automatically.
+Maintainer only. Requires an npm account with maintainer access to `@neturely/okffs` (published publicly via `publishConfig.access`).
+
+1. **Prepare the release** with the `prepare_release` tool (ask Claude, e.g. *"prepare a release"* or *"prepare release X.Y.Z"*). It bumps `package.json` + `package-lock.json`, rolls the CHANGELOG, and opens a release PR. Review and merge it, then merge to `main`.
+2. **Tag and push** the version (replace `X.Y.Z` with the release):
+   ```bash
+   git tag vX.Y.Z
+   git push origin vX.Y.Z
+   ```
+
+GitHub Actions publishes to npm automatically on semver tags (`v*.*.*`), so **do not run `npm publish` manually** — it would collide with CI. The `NPM_TOKEN` secret must be set in the repository settings. `prepare_release` deliberately stops before tagging so the irreversible publish stays a manual decision.
+
+## Codebase search
+
+This project uses [semble](https://github.com/MinishLab/semble) for semantic code search via MCP. The sub-agent config lives at `.claude/agents/semble-search.md` and is picked up automatically by Claude Code. To search manually (requires `uv`):
+
+```bash
+uvx --from "semble[mcp]" semble search "your query" .
+```
 
 ## Changelog
 
