@@ -212,10 +212,10 @@ export async function handler(input: z.infer<typeof inputSchema>) {
       }
     }
 
-    for (const entry of created) {
+    for (const [i, entry] of created.entries()) {
       try {
         const pr = await createDraftPullRequest(
-          `WIP: #${entry.number} - ${input.tasks[created.indexOf(entry)].title}`,
+          `WIP: #${entry.number} - ${input.tasks[i].title}`,
           `Closes #${entry.number}`,
           entry.branchName,
           defaultBranch
@@ -238,9 +238,9 @@ export async function handler(input: z.infer<typeof inputSchema>) {
     }
   }
 
-  const results = created.map((entry) => {
+  const results = created.map((entry, i) => {
     const lines = [
-      `#${entry.number} — ${input.tasks[created.indexOf(entry)].title}`,
+      `#${entry.number} — ${input.tasks[i].title}`,
       `  Branch: \`${entry.branchName}\``,
       `  ${entry.html_url}`,
     ];
