@@ -4,6 +4,7 @@ import path from "path";
 import { createPullRequest, getDefaultBranch } from "../github.js";
 import { getUnreleasedSection, rollChangelogForRelease, foldFragmentsIntoChangelog } from "../docs.js";
 import { git, currentBranch } from "../git.js";
+import { config } from "../config.js";
 
 export const name = "prepare_release";
 
@@ -195,6 +196,19 @@ export async function handler(input: z.infer<typeof inputSchema>) {
     };
   }
 
+  // When a protected branch is configured, spell out that promoting the release
+  // into it (and the tag that triggers the publish) are manual, user-gated steps
+  // — an agent must not drive them autonomously (#152).
+  // This release PR targets the base branch (OKFFS_BASE_BRANCH), which is often
+  // NOT the protected branch — so phrase the note conditionally rather than
+  // asserting the release merges into the protected branch.
+  const protectedNote = config.protectedBranch
+    ? `\n\n⛔ OKFFS_PROTECTED_BRANCH is \`${config.protectedBranch}\`. If you plan to promote this ` +
+      `release into \`${config.protectedBranch}\` and tag \`v${targetVersion}\` (which triggers the npm ` +
+      `publish), those are USER-GATED steps — hand back to the user for the check and sign-off; ` +
+      `do not proceed autonomously.`
+    : "";
+
   return {
     content: [{
       type: "text" as const,
@@ -202,7 +216,8 @@ export async function handler(input: z.infer<typeof inputSchema>) {
         `Prepared release ${targetVersion} (from ${currentVersion}).\n` +
         `Branch: ${branch}\nPR: ${pr.html_url}\n\n` +
         `Next: review & merge the PR, then tag \`v${targetVersion}\` and push it — CI publishes to npm. ` +
-        `prepare_release does not tag or publish.`,
+        `prepare_release does not tag or publish.` +
+        protectedNote,
     }],
   };
 }
