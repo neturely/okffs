@@ -5,6 +5,17 @@ See [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-07-04
+### Changed
+- Rewrote the README for a friendlier first read: a plain-language intro and one-step quickstart up front, the internal build-phase "Status" section removed, and the scattered env-var documentation consolidated into a single Configuration reference table. Development setup, publishing, and codebase-search detail moved to CONTRIBUTING.md (#142).
+- `create_issue` now injects the board's **real** Priority/Effort option names into its inference guidance (resolved at tools/list time), so Claude infers against the actual board options — e.g. a `P0/P1/P2` board — instead of the generic `Urgent/High/Medium/Low` scale. Falls back to the generic scale when the board is unreachable or the options can't be read (#133).
+### Fixed
+- Harden org Issue Field / Projects queries against pagination truncation: bump the org `issueFields` and per-issue `issueFieldValues` page sizes (and the project `fields` query) so Priority/Effort are reliably found on boards/orgs with many fields, rather than being missed past the first page (PR #140 review). Also corrected the `create_pull_request` tool description to reflect the fragment-based `OKFFS_UPDATE_DOCS` behaviour (it writes a `.changes/unreleased/` fragment, not a direct `CHANGELOG.md` edit).
+- Board Priority/Effort/initial-status steps that are skipped or fail are now surfaced in the tool response instead of only being written to the server's stderr (`console.warn`), which the host and user never see. When a field is requested but not applied (e.g. the board's field is an org-level Issue Field needing a classic PAT, or the value has no matching option), `create_issue`, `create_issues_from_list`, and `plan` now print a `⚠` line explaining why — an enabled board step is never silently dropped (#146).
+- The org-level Issue Fields preview API (used for `list_issues` Priority/Effort and `create_issue` option lookup) is now retried up to 3 times with a short backoff on transient failures, making it far less likely to intermittently drop Priority/Effort. Permission errors (403/FORBIDDEN) are still reported immediately without retry (#137).
+### Added
+- `create_issues_from_list` and `plan` now place each issue on the GitHub Projects v2 board like `create_issue` does — adding it, setting an inferred/default Priority and Effort, and applying `OKFFS_PROJECT_INITIAL_STATUS` — when `OKFFS_PROJECT_AUTO_ADD=true`. Both tools gained per-task `priority`/`effort` params. Board logic is now shared in `src/board.ts` (#144).
+
 ## [0.4.0] - 2026-07-03
 ### Added
 - Priority-aware workflow: `list_issues` now shows each issue's `priority:` and **orders the listing by Priority** (Urgent → High → Medium → Low → unset) so the most important work surfaces first when deciding what to do next. New `OKFFS_DEFAULT_PRIORITY` env var applies a fallback Priority to new issues when `create_issue` isn't given one (mirrors `OKFFS_DEFAULT_LABELS`). Priority is read from a project-native field, or a GitHub org-level Issue Field when `OKFFS_CLASSIC_PAT=true`.
@@ -84,7 +95,8 @@ See [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `create_pull_request` commits the updated CHANGELOG onto the branch and pushes the branch before opening the PR, with non-blocking error handling ([#38](https://github.com/2b9sa2owa/okffs/issues/38)).
 - All git operations now run via `execFileSync` with argument arrays (no shell), removing command-injection risk from branch names and commit hints; tools also checkout the target branch before committing/pushing and restore the original branch afterward.
 
-[Unreleased]: https://github.com/neturely/okffs/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/neturely/okffs/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/neturely/okffs/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/neturely/okffs/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/neturely/okffs/compare/v0.2.2...v0.3.0
 [0.2.2]: https://github.com/neturely/okffs/compare/v0.2.1...v0.2.2

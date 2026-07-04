@@ -1,2 +1,0 @@
-<!-- okffs:type=Fixed -->
-- Harden org Issue Field / Projects queries against pagination truncation: bump the org `issueFields` and per-issue `issueFieldValues` page sizes (and the project `fields` query) so Priority/Effort are reliably found on boards/orgs with many fields, rather than being missed past the first page (PR #140 review). Also corrected the `create_pull_request` tool description to reflect the fragment-based `OKFFS_UPDATE_DOCS` behaviour (it writes a `.changes/unreleased/` fragment, not a direct `CHANGELOG.md` edit).
