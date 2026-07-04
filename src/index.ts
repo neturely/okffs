@@ -49,11 +49,27 @@ const server = new Server(
 );
 
 server.setRequestHandler(ListToolsRequestSchema, async () => ({
-  tools: tools.map((t) => ({
-    name: t.name,
-    description: t.description,
-    inputSchema: zodToJsonSchema(t.inputSchema),
-  })),
+  // A tool may export an async getDescription() to compute its description at
+  // list time (e.g. create_issue injects the board's real Priority/Effort options
+  // — #133). Fall back to the static description on absence or failure.
+  tools: await Promise.all(
+    tools.map(async (t) => {
+      let description = t.description;
+      const getDescription = (t as { getDescription?: () => Promise<string> }).getDescription;
+      if (getDescription) {
+        try {
+          description = await getDescription();
+        } catch (err) {
+          console.warn(`[okffs] getDescription() failed for ${t.name}, using static description:`, err instanceof Error ? err.message : err);
+        }
+      }
+      return {
+        name: t.name,
+        description,
+        inputSchema: zodToJsonSchema(t.inputSchema),
+      };
+    })
+  ),
 }));
 
 server.setRequestHandler(CallToolRequestSchema, async (req) => {
