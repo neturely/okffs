@@ -56,7 +56,7 @@ export async function handler(input: z.infer<typeof inputSchema>) {
           `⛔ This PR would target \`${baseBranch}\`, which is set as OKFFS_PROTECTED_BRANCH.\n\n` +
           `Promoting into a protected branch is a user-gated step. Do NOT proceed autonomously — ` +
           `confirm with the user, then re-call create_pull_request with confirmed: true. ` +
-          `(Nothing has been created or pushed.)`,
+          `(This call made no changes — any pre-existing draft PR is left untouched.)`,
       }],
     };
   }

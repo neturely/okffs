@@ -7,10 +7,13 @@ export const config = {
     ? process.env.OKFFS_DEFAULT_LABELS.split(",").map((s) => s.trim())
     : [],
   baseBranch: process.env.OKFFS_BASE_BRANCH || null,
-  // OKFFS_PROTECTED_BRANCH — a branch that okffs must never promote into without
+  // OKFFS_PROTECTED_BRANCH — a branch okffs won't open/finalize a PR into without
   // explicit user confirmation (e.g. `main`). create_pull_request refuses to
-  // target it without confirmed:true, and prepare_release names it as a manual,
-  // user-gated step. Guards against an agent auto-driving a full release (#152).
+  // target it without confirmed:true, and prepare_release flags promoting/tagging
+  // into it as manual, user-gated steps. Note: create_issue's OKFFS_AUTO_PR draft
+  // is not gated (a draft is not a promotion), but finalizing it via
+  // create_pull_request is — so the merge-worthy step still requires confirmation.
+  // Guards against an agent auto-driving a full release (#152).
   protectedBranch: process.env.OKFFS_PROTECTED_BRANCH || null,
   // OKFFS_IDENTIFIER — optional project-scoped prefix inserted into branch names:
   // {issue-number}-{identifier}-{slug} instead of {issue-number}-{slug}
