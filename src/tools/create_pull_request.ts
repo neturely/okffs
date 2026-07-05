@@ -20,13 +20,12 @@ import { git, currentBranch } from "../git.js";
 export const name = "create_pull_request";
 
 export const description =
-  "Create a pull request for the current issue branch. Reads the issue, its comments, and commits to generate a PR title and body. Always includes Closes #N. If OKFFS_UPDATE_DOCS is true, writes a per-issue changelog fragment under .changes/unreleased/ (assembled into CHANGELOG.md at release time by prepare_release — not a direct CHANGELOG.md edit), plus SECURITY.md for security-related changes, and commits them onto the branch before creating the PR. If a PR already exists for the branch (e.g. a draft opened by create_issue under OKFFS_AUTO_PR=true), it is updated and marked ready for review instead of erroring. Posts a summary comment to the issue. If the issue has no okffs-created branch link (no **Branch:** line — e.g. a pre-okffs issue or a hand-made branch), pass an explicit branch, or check out a branch named {issue-number}-… and okffs infers it; either way it backfills the **Branch:** line. If the PR would target OKFFS_PROTECTED_BRANCH, the tool refuses without confirmed: true — promoting into a protected branch must be explicitly confirmed by the user.";
+  "Create a pull request for the current issue branch. Reads the issue, its comments, and commits to generate a PR title and body. Always includes Closes #N. If OKFFS_UPDATE_DOCS is true, writes a per-issue changelog fragment under .changes/unreleased/ (assembled into CHANGELOG.md at release time by prepare_release — not a direct CHANGELOG.md edit), plus SECURITY.md for security-related changes, and commits them onto the branch before creating the PR. If a PR already exists for the branch (e.g. a draft opened by create_issue under OKFFS_AUTO_PR=true), it is updated and marked ready for review instead of erroring. Posts a summary comment to the issue. If the issue has no okffs-created branch link (no **Branch:** line — e.g. a pre-okffs issue or a hand-made branch), pass an explicit branch, or check out a branch named {issue-number}-… and okffs infers it; either way it backfills the **Branch:** line. If the PR targets OKFFS_PROTECTED_BRANCH, okffs still opens it (opening is safe and reversible) and adds a reminder that the merge/tag stay with the user — OKFFS_PROTECTED_BRANCH governs autonomous merging, never PR creation.";
 
 export const inputSchema = z.object({
   issue_number: z.number().int().positive().describe("The issue number to create a PR for"),
   summary: z.string().optional().describe("Optional summary of what was done — used in PR body and issue comment"),
   branch: z.string().optional().describe("Branch to open the PR from, for issues whose branch okffs didn't create (no **Branch:** line in the body). Usually unnecessary — okffs-created issues carry the link, and a checked-out branch named {issue-number}-… is inferred automatically. When used, okffs backfills the **Branch:** line onto the issue."),
-  confirmed: z.boolean().optional().describe("Required (true) only when the PR would target OKFFS_PROTECTED_BRANCH — an explicit acknowledgement that this promotes into a protected branch"),
 });
 
 export async function handler(input: z.infer<typeof inputSchema>) {
@@ -69,23 +68,18 @@ export async function handler(input: z.infer<typeof inputSchema>) {
 
   const baseBranch = await getDefaultBranch();
 
-  // Protected-branch gate: if this PR would promote into OKFFS_PROTECTED_BRANCH,
-  // refuse without an explicit confirmed:true and hand back to the user. Runs
-  // before any side effects (no branch checkout / push / PR yet) so a decline is
-  // a clean no-op. Guards against an agent auto-driving a promotion into a
-  // protected branch (e.g. a full release) — see #152.
-  if (config.protectedBranch && baseBranch === config.protectedBranch && !input.confirmed) {
-    return {
-      content: [{
-        type: "text" as const,
-        text:
-          `⛔ This PR would target \`${baseBranch}\`, which is set as OKFFS_PROTECTED_BRANCH.\n\n` +
-          `Promoting into a protected branch is a user-gated step. Do NOT proceed autonomously — ` +
-          `confirm with the user, then re-call create_pull_request with confirmed: true. ` +
-          `(This call made no changes — any pre-existing draft PR is left untouched.)`,
-      }],
-    };
-  }
+  // OKFFS_PROTECTED_BRANCH governs autonomous *merging*, not PR *creation*.
+  // Opening a PR into a protected branch is non-destructive and reversible — the
+  // merge is the actual risk, and it's already gated by GitHub branch protection
+  // plus a manual merge by the user. okffs has no merge tool, so the invariant
+  // "never autonomously merge into the protected branch" holds for free; we do
+  // not block or gate opening the PR here. When the PR targets the protected
+  // branch we still surface a reminder that the merge/tag stay with the user
+  // (#181, revisiting the #152 behaviour).
+  const protectedNote =
+    config.protectedBranch && baseBranch === config.protectedBranch
+      ? `\n\n🔒 This PR targets \`${baseBranch}\` (OKFFS_PROTECTED_BRANCH). okffs opened it but will **not** merge or tag — that stays with you.`
+      : "";
 
   // `Closes #N` only auto-closes the issue when the PR merges into the repo's
   // default branch. If OKFFS_BASE_BRANCH targets a non-default branch (e.g.
@@ -253,7 +247,7 @@ export async function handler(input: z.infer<typeof inputSchema>) {
     `PR ${action}: ${pr.html_url}`,
     ``,
     body,
-  ].join("\n") + autoCloseNote;
+  ].join("\n") + autoCloseNote + protectedNote;
   await addIssueComment(input.issue_number, comment);
 
   // OKFFS_UPDATE_GUIDANCE: nudge the agent to keep CLAUDE.md in sync with any
@@ -263,6 +257,6 @@ export async function handler(input: z.infer<typeof inputSchema>) {
     : "";
 
   return {
-    content: [{ type: "text" as const, text: `PR #${pr.number} ${action}: ${pr.html_url}${autoCloseNote}${guidanceNote}` }],
+    content: [{ type: "text" as const, text: `PR #${pr.number} ${action}: ${pr.html_url}${autoCloseNote}${protectedNote}${guidanceNote}` }],
   };
 }
