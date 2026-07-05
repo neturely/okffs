@@ -54,8 +54,10 @@ export async function handler(input: z.infer<typeof inputSchema>) {
   }
 
   // base defaults to the protected branch (the release/publish branch), else the
-  // repo's real default branch.
-  const base = input.base ?? config.protectedBranch ?? (await getRepoDefaultBranch());
+  // repo's real default branch. Fetch the repo default up front — also used below
+  // to decide whether closing keywords in the PR body could fire.
+  const repoDefault = await getRepoDefaultBranch();
+  const base = input.base ?? config.protectedBranch ?? repoDefault;
 
   if (head === base) {
     return text(
@@ -73,7 +75,22 @@ export async function handler(input: z.infer<typeof inputSchema>) {
   }
 
   const title = `Promote ${head} → ${base}`;
-  const changes = commits.map((c) => `- ${c.commit.message.split("\n")[0]}`).join("\n");
+
+  // GitHub closing keywords (Close/Closes/Closed/Fix/Fixes/Fixed/Resolve/Resolves/
+  // Resolved #N) in a PR body only auto-close when the PR merges into the repo's
+  // DEFAULT branch. The list below echoes commit subjects verbatim, and okffs's own
+  // commit titles contain `Close #N` — so if this promotion targets the default
+  // branch, merging it could unintentionally close whatever issues those subjects
+  // reference. When base is the default branch, defuse issue refs in the list
+  // (wrap them in backticks so they're inert, non-closing text); otherwise leave
+  // them verbatim (links intact, and the keywords are inert anyway). Keeps the
+  // basic behaviour, guards the edge case (#188).
+  const baseIsDefault = base === repoDefault;
+  const subjectOf = (c: { commit: { message: string } }) => {
+    const subject = c.commit.message.split("\n")[0];
+    return baseIsDefault ? subject.replace(/#(\d+)/g, "`#$1`") : subject;
+  };
+  const changes = commits.map((c) => `- ${subjectOf(c)}`).join("\n");
   const body = [
     input.summary ?? `Promotion PR from \`${head}\` into \`${base}\`. No \`Closes #N\` — this is a branch promotion, not an issue.`,
     ``,
