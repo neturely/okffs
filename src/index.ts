@@ -51,16 +51,23 @@ const version = JSON.parse(
 // agent sees — this is how new tools/behaviour get adopted instead of the agent
 // defaulting to raw git/gh (#169). Keep it tight: it's always-on context. This is
 // the machine-visible counterpart to the human-facing README/CLAUDE.md guidance.
-const SERVER_INSTRUCTIONS = `okffs owns the GitHub issue → branch → PR → merge → close workflow (plus, when enabled, a GitHub Projects v2 board and releases). Prefer okffs tools for these actions over raw git/gh/GraphQL: okffs authenticates with GITHUB_TOKEN (use a classic PAT here if org-level Issue Fields are involved) before falling back to the gh CLI, and honours its OKFFS_* env toggles — so hand-rolling git/gh often uses the wrong token or skips okffs conventions.
+const SERVER_INSTRUCTIONS = `okffs owns the GitHub issue → branch → PR → merge → close workflow (plus, when enabled, a GitHub Projects v2 board and releases).
+
+ALWAYS reach for an okffs tool before raw git/gh/GraphQL when one covers the action — this is a correctness rule, not a style preference:
+- Identity/permissions: okffs authenticates with the configured GITHUB_TOKEN (a PAT scoped for this repo, incl. Projects / org Issue Fields when set). Raw gh/git uses whatever ambient CLI token is signed in — often the wrong identity or missing the Projects/org scopes, so it fails or acts as the wrong user.
+- Conventions: okffs applies branch naming ({issue}-{slug}), the **Branch:** issue link, Closes #N, board placement, changelog fragments, and the OKFFS_PROTECTED_BRANCH invariant. Hand-rolled gh/git silently skips all of that.
+Fall back to raw git/gh ONLY when no okffs tool fits the action.
 
 Common action → tool:
-- Start work: create_issue (also creates the linked branch and writes the **Branch:** line that create_pull_request/commit_and_update rely on). Many at once: create_issues_from_list or plan.
-- Progress: commit_and_update (stage + commit + push + issue comment). Open/finalize a PR: create_pull_request (always adds Closes #N).
+- Start work: create_issue (creates the issue, the linked branch, and the **Branch:** line that create_pull_request/commit_and_update rely on). Many at once: create_issues_from_list or plan.
+- Progress: commit_and_update (stage + commit + push + issue comment) — prefer over raw git commit/push.
+- Open/finalize an issue's PR (into the base branch): create_pull_request (always adds Closes #N).
+- Promotion/release gate — a base→protected PR with no issue, e.g. develop→main: promote_branch (issue-less; adds the PR to the board; NEVER use raw \`gh pr create\` for this).
 - Board: create_issue sets an inferred priority/effort at creation; set them on an EXISTING issue with set_issue_fields; move columns with update_project_status (Backlog/Ready/In Progress/Review — Done is GitHub's own automation).
 - PR review: list_pr_review_comments → fix → reply_to_review_comment → resolve_review_thread (honours OKFFS_RESOLVE_THREADS); or the /okffs:address_pr_review prompt.
-- Release: prepare_release (it does NOT tag or publish).
+- Release prep: prepare_release (bumps version + rolls the changelog; does NOT tag or publish).
 
-Rules: never merge, tag, or publish into OKFFS_PROTECTED_BRANCH autonomously — hand back to the user for sign-off. Destructive tools (delete_issue, delete_branch) require confirmed: true (call once to preview, again to act).`;
+Rules: never merge, tag, or publish into OKFFS_PROTECTED_BRANCH autonomously — okffs may OPEN a PR into it (promote_branch), but the merge/tag are yours to hand back for. Destructive tools (delete_issue, delete_branch) require confirmed: true (call once to preview, again to act).`;
 
 const server = new Server(
   { name: "okffs", version },
