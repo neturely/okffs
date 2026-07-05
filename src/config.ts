@@ -79,9 +79,17 @@ export const config = {
   // promote_branch gate PR (e.g. `copilot-pull-request-reviewer[bot]` for GitHub
   // Copilot code review, the develop→main review convention). Unset = request no
   // reviewers. Best-effort: a failure warns and never blocks the PR. (#182)
+  // Only acted on when OKFFS_PROMOTION_AUTO_REVIEW is true.
   promotionReviewers: process.env.OKFFS_PROMOTION_REVIEWERS
     ? process.env.OKFFS_PROMOTION_REVIEWERS.split(",").map((s) => s.trim()).filter(Boolean)
     : [],
+  // OKFFS_PROMOTION_AUTO_REVIEW — explicit opt-in for promote_branch to auto-request
+  // OKFFS_PROMOTION_REVIEWERS on the gate PR. Default false (cost-safe). When true,
+  // reviewers are requested ONLY when the gate PR is first created — never on
+  // updates/re-runs — so a paid reviewer (e.g. Copilot) isn't re-triggered
+  // repeatedly. ⚠️ COST: enabling this with a billable reviewer incurs a charge per
+  // newly-created gate PR. Re-review after new commits is a manual step. (#194)
+  promotionAutoReview: process.env.OKFFS_PROMOTION_AUTO_REVIEW === "true",
 };
 
 // Warn once at startup if the feature is half-configured. Non-fatal: the
