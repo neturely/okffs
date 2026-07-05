@@ -1,6 +1,5 @@
 import { z } from "zod";
 import {
-  getDefaultBranch,
   getRepoDefaultBranch,
   getBranchCommits,
   createPullRequest,
@@ -42,9 +41,11 @@ export const inputSchema = z.object({
 const text = (t: string) => ({ content: [{ type: "text" as const, text: t }] });
 
 export async function handler(input: z.infer<typeof inputSchema>) {
-  // head defaults to the integration branch (OKFFS_BASE_BRANCH). getDefaultBranch()
-  // returns it when set, otherwise the repo default — which is the promotion
-  // *target*, not a source, so require an explicit head in that case.
+  // head defaults to the integration branch (OKFFS_BASE_BRANCH). We read
+  // config.baseBranch directly rather than getDefaultBranch(), because that
+  // helper falls back to the repo default branch — which is the promotion
+  // *target*, not a source. If neither an explicit head nor OKFFS_BASE_BRANCH
+  // is set, require the caller to pass one.
   const head = input.head ?? config.baseBranch;
   if (!head) {
     return text(
@@ -80,9 +81,11 @@ export async function handler(input: z.infer<typeof inputSchema>) {
     changes,
   ].join("\n");
 
-  // Reuse an already-open promotion PR for this head rather than erroring — GitHub
-  // permits only one open PR per head→base pair.
-  const existing = await getOpenPullRequestForBranch(head);
+  // Reuse an already-open promotion PR for this head→base rather than erroring —
+  // GitHub permits only one open PR per head→base pair. Match on base too: a
+  // long-lived head like `develop` can have open PRs into several bases, so
+  // head-only matching could reuse/overwrite the wrong PR.
+  const existing = await getOpenPullRequestForBranch(head, base);
   let pr: { number: number; html_url: string; node_id: string };
   let action: string;
   if (existing) {
