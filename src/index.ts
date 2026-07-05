@@ -30,11 +30,12 @@ import * as resolveReviewThread from "./tools/resolve_review_thread.js";
 import * as prepareRelease from "./tools/prepare_release.js";
 import * as updateProjectStatus from "./tools/update_project_status.js";
 import * as setIssueFields from "./tools/set_issue_fields.js";
+import * as promoteBranch from "./tools/promote_branch.js";
 
 import * as addressPrReview from "./prompts/address_pr_review.js";
 import * as updateGuidance from "./prompts/update_guidance.js";
 
-const tools = [createIssue, listIssues, closeIssue, deleteIssue, deleteBranch, getIssue, commentIssue, createIssuesFromList, plan, linkIssues, createPullRequest, commitAndUpdate, listPrReviewComments, replyToReviewComment, resolveReviewThread, prepareRelease, updateProjectStatus, setIssueFields];
+const tools = [createIssue, listIssues, closeIssue, deleteIssue, deleteBranch, getIssue, commentIssue, createIssuesFromList, plan, linkIssues, createPullRequest, commitAndUpdate, listPrReviewComments, replyToReviewComment, resolveReviewThread, prepareRelease, updateProjectStatus, setIssueFields, promoteBranch];
 
 const prompts = [addressPrReview, updateGuidance];
 
