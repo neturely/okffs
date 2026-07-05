@@ -126,7 +126,18 @@ GITHUB_REPO=your-repo-name
 
 ### Optional settings
 
-All optional; unset unless noted. See [`.env.example`](.env.example) for a copyable template.
+All optional; unset unless noted. Grouped by concern — the same groups appear in [`.env.example`](.env.example), a copyable template. (`GITHUB_TOKEN` / `GITHUB_OWNER` / `GITHUB_REPO` are covered under [Setup](#setup) above.)
+
+**Branching & pull requests**
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `OKFFS_BASE_BRANCH` | repo default | Branch new issue branches are created from. |
+| `OKFFS_PROTECTED_BRANCH` | — | A branch okffs must never autonomously **merge**, tag, or publish into (e.g. `main`). Governs *merging*, not PR *creation*: okffs will freely **open** a PR targeting it (opening is safe — the merge is already gated by branch protection + your manual merge) and just adds a reminder that the merge/tag stay with you. `prepare_release` flags merging/tagging into it as a manual, user-gated step. |
+| `OKFFS_IDENTIFIER` | — | Prefix for branch names: `{number}-{identifier}-{slug}`. |
+| `OKFFS_AUTO_PR` | `false` | Open a draft PR when a new issue branch is created. |
+
+**Issue defaults & inference**
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
@@ -135,19 +146,38 @@ All optional; unset unless noted. See [`.env.example`](.env.example) for a copya
 | `OKFFS_DEFAULT_PRIORITY` / `OKFFS_DEFAULT_EFFORT` | — | Board Priority/Effort fallback when none is inferred or given. |
 | `OKFFS_INFER_PRIORITY` / `OKFFS_INFER_EFFORT` | `true` | Let Claude infer priority/effort from the task. |
 | `OKFFS_PROMPT_METADATA` | `true` | Set `false` to hide the assignees/labels tip. |
-| `OKFFS_BASE_BRANCH` | repo default | Branch new issue branches are created from. |
-| `OKFFS_PROTECTED_BRANCH` | — | A branch okffs must never promote into without explicit user confirmation (e.g. `main`). `create_pull_request` refuses to target it without `confirmed: true`; `prepare_release` flags merging/tagging into it as a manual, user-gated step. |
-| `OKFFS_IDENTIFIER` | — | Prefix for branch names: `{number}-{identifier}-{slug}`. |
-| `OKFFS_AUTO_PR` | `false` | Open a draft PR when a new issue branch is created. |
+
+**PR review**
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
 | `OKFFS_RESOLVE_THREADS` | `false` | Auto-resolve PR review threads after they're addressed. |
-| `OKFFS_UPDATE_GUIDANCE` | `false` | Nudge Claude to keep `CLAUDE.md` in sync at PR time. |
+
+**Docs & changelog**
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
 | `OKFFS_UPDATE_DOCS` | `false` | Auto-write CHANGELOG/SECURITY updates on `create_pull_request`. |
 | `OKFFS_EXCLUDE_DOCS` | — | Comma-separated docs to skip (`CHANGELOG.md`, `SECURITY.md`). |
+| `OKFFS_UPDATE_GUIDANCE` | `false` | Nudge Claude to keep `CLAUDE.md` in sync at PR time. |
+
+**GitHub Projects v2 (board)**
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
 | `OKFFS_PROJECT_ENABLED` | `false` | Enable the GitHub Projects v2 integration. |
 | `OKFFS_PROJECT_ID` | — | The board's GraphQL node ID (required when enabled). |
 | `OKFFS_PROJECT_AUTO_ADD` | `false` | Add new issues to the board (fallback when the board has no native auto-add). |
 | `OKFFS_PROJECT_INITIAL_STATUS` | — | Column a freshly added issue lands in (e.g. `Backlog`). |
 | `OKFFS_CLASSIC_PAT` | `false` | Set `true` only with a classic `admin:org` PAT — enables org-level Issue Field Priority/Effort (broad token; security tradeoff). |
+
+**Branch promotion & releases** (`promote_branch`)
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `OKFFS_PROMOTION_STATUS` | — | Board Status column the promotion PR card lands in (e.g. `Review`). Needs `OKFFS_PROJECT_ENABLED`. |
+| `OKFFS_PROMOTION_REVIEWERS` | — | Comma-separated reviewers to request on the gate PR (e.g. `copilot-pull-request-reviewer[bot]`). Only acted on when `OKFFS_PROMOTION_AUTO_REVIEW=true`. |
+| `OKFFS_PROMOTION_AUTO_REVIEW` | `false` | Opt in to auto-request those reviewers, **on gate-PR creation only** (never on re-runs). **⚠️ Cost:** Copilot code review is billable, so this charges per newly-created promotion PR. |
 
 ## Conventions
 
