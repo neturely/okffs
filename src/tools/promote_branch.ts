@@ -20,8 +20,9 @@ export const description =
   "OKFFS_PROTECTED_BRANCH — or the repo default branch if no protected branch is set — but head/base can be overridden. " +
   "No confirmation is needed: opening a PR is safe and reversible. okffs opens the PR and hands back — it NEVER merges " +
   "or tags; that stays with the user. If a promotion PR is already open for the head branch it is updated and returned " +
-  "rather than erroring (GitHub allows only one open PR per head→base pair). When OKFFS_PROMOTION_REVIEWERS is set " +
-  "(e.g. Copilot), those reviewers are requested; when OKFFS_PROMOTION_STATUS is set, the board card lands in that column.";
+  "rather than erroring (GitHub allows only one open PR per head→base pair). When OKFFS_PROMOTION_AUTO_REVIEW is true, " +
+  "OKFFS_PROMOTION_REVIEWERS (e.g. Copilot) are requested — only on a newly-created gate PR, never on re-runs, to avoid " +
+  "repeat (possibly billable) reviews; when OKFFS_PROMOTION_STATUS is set, the board card lands in that column.";
 
 export const inputSchema = z.object({
   head: z
@@ -119,14 +120,25 @@ export async function handler(input: z.infer<typeof inputSchema>) {
   // fails the promotion.
   const notes: string[] = [];
 
-  if (config.promotionReviewers.length > 0) {
-    try {
-      await requestReviewers(pr.number, config.promotionReviewers);
-      notes.push(`Requested review from: ${config.promotionReviewers.join(", ")}.`);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      console.warn(`[okffs] Failed to request reviewers on PR #${pr.number}:`, msg);
-      notes.push(`⚠️ Could not request reviewers (${config.promotionReviewers.join(", ")}): ${msg}`);
+  // Auto-request reviewers only when explicitly opted in (OKFFS_PROMOTION_AUTO_REVIEW)
+  // and only on a NEWLY-created gate PR — never on updates/re-runs — so a paid
+  // reviewer (e.g. Copilot) isn't re-triggered and re-billed each time. On an update
+  // we note that reviewers weren't re-requested and how to trigger one manually.
+  if (config.promotionAutoReview && config.promotionReviewers.length > 0) {
+    if (action === "created") {
+      try {
+        await requestReviewers(pr.number, config.promotionReviewers);
+        notes.push(`Requested review from: ${config.promotionReviewers.join(", ")}.`);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.warn(`[okffs] Failed to request reviewers on PR #${pr.number}:`, msg);
+        notes.push(`⚠️ Could not request reviewers (${config.promotionReviewers.join(", ")}): ${msg}`);
+      }
+    } else {
+      notes.push(
+        `Reviewers not re-requested on this update (auto-review requests on create only, to avoid repeat cost). ` +
+        `Re-request manually if you want a fresh review.`
+      );
     }
   }
 
