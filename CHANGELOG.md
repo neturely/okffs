@@ -5,6 +5,19 @@ See [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-07-05
+### Fixed
+- Reorganise env vars into labelled groups across .env.example and README (and fix stale/missing entries) ([#196](https://github.com/neturely/okffs/issues/196))
+- Address Copilot review on promote_branch (#187): match open PR by head+base, drop unused import, fix stale comment ([#190](https://github.com/neturely/okffs/issues/190))
+- Fix OKFFS_PROTECTED_BRANCH semantics: govern merging, not PR creation ([#181](https://github.com/neturely/okffs/issues/181))
+### Added
+- promote_branch: gate auto reviewer-request behind OKFFS_PROMOTION_AUTO_REVIEW (create-only), document Copilot cost ([#194](https://github.com/neturely/okffs/issues/194))
+- address_pr_review: complete the loop when the reviewed PR's head is a protected branch (promotion/gate PRs) ([#192](https://github.com/neturely/okffs/issues/192))
+- Add promote_branch tool: issue-less develop→main PR added to the board ([#182](https://github.com/neturely/okffs/issues/182))
+### Changed
+- promote_branch: guard PR body against auto-closing issues when the promotion base is the default branch ([#188](https://github.com/neturely/okffs/issues/188))
+- Strengthen guidance so Claude prefers okffs tools over raw gh/git ([#183](https://github.com/neturely/okffs/issues/183))
+
 ## [0.5.2] - 2026-07-04
 ### Added
 - okffs now sends MCP server `instructions` in its `initialize` response, which hosts (Claude Code, etc.) surface to the agent each session — steering it to prefer okffs tools over raw git/gh and to honour the `OKFFS_*` toggles. The brief ships with the package version, so upgrading okffs automatically updates the guidance the agent sees (how new tools get adopted instead of old habits) ([#169](https://github.com/neturely/okffs/issues/169)).
@@ -112,7 +125,8 @@ See [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `create_pull_request` commits the updated CHANGELOG onto the branch and pushes the branch before opening the PR, with non-blocking error handling ([#38](https://github.com/2b9sa2owa/okffs/issues/38)).
 - All git operations now run via `execFileSync` with argument arrays (no shell), removing command-injection risk from branch names and commit hints; tools also checkout the target branch before committing/pushing and restore the original branch afterward.
 
-[Unreleased]: https://github.com/neturely/okffs/compare/v0.5.2...HEAD
+[Unreleased]: https://github.com/neturely/okffs/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/neturely/okffs/compare/v0.5.2...v0.6.0
 [0.5.2]: https://github.com/neturely/okffs/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/neturely/okffs/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/neturely/okffs/compare/v0.4.0...v0.5.0
