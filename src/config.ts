@@ -71,6 +71,25 @@ export const config = {
   // a scaffolded issue straight to "In Progress" (#103). Unset = leave whatever
   // column the board's own automation assigns.
   projectInitialStatus: process.env.OKFFS_PROJECT_INITIAL_STATUS || null,
+  // OKFFS_PROMOTION_STATUS — board Status column the develop→main promotion PR
+  // card should land in when promote_branch adds it to the board (e.g. "Review").
+  // Unset = leave the card wherever the board's own automation puts it. (#182)
+  promotionStatus: process.env.OKFFS_PROMOTION_STATUS || null,
+  // OKFFS_PROMOTION_REVIEWERS — comma-separated reviewers to request on the
+  // promote_branch gate PR (e.g. `copilot-pull-request-reviewer[bot]` for GitHub
+  // Copilot code review, the develop→main review convention). Unset = request no
+  // reviewers. Best-effort: a failure warns and never blocks the PR. (#182)
+  // Only acted on when OKFFS_PROMOTION_AUTO_REVIEW is true.
+  promotionReviewers: process.env.OKFFS_PROMOTION_REVIEWERS
+    ? process.env.OKFFS_PROMOTION_REVIEWERS.split(",").map((s) => s.trim()).filter(Boolean)
+    : [],
+  // OKFFS_PROMOTION_AUTO_REVIEW — explicit opt-in for promote_branch to auto-request
+  // OKFFS_PROMOTION_REVIEWERS on the gate PR. Default false (cost-safe). When true,
+  // reviewers are requested ONLY when the gate PR is first created — never on
+  // updates/re-runs — so a paid reviewer (e.g. Copilot) isn't re-triggered
+  // repeatedly. ⚠️ COST: enabling this with a billable reviewer incurs a charge per
+  // newly-created gate PR. Re-review after new commits is a manual step. (#194)
+  promotionAutoReview: process.env.OKFFS_PROMOTION_AUTO_REVIEW === "true",
 };
 
 // Warn once at startup if the feature is half-configured. Non-fatal: the
