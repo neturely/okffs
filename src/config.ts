@@ -71,6 +71,17 @@ export const config = {
   // a scaffolded issue straight to "In Progress" (#103). Unset = leave whatever
   // column the board's own automation assigns.
   projectInitialStatus: process.env.OKFFS_PROJECT_INITIAL_STATUS || null,
+  // OKFFS_PROMOTION_STATUS — board Status column the develop→main promotion PR
+  // card should land in when promote_branch adds it to the board (e.g. "Review").
+  // Unset = leave the card wherever the board's own automation puts it. (#182)
+  promotionStatus: process.env.OKFFS_PROMOTION_STATUS || null,
+  // OKFFS_PROMOTION_REVIEWERS — comma-separated reviewers to request on the
+  // promote_branch gate PR (e.g. `copilot-pull-request-reviewer[bot]` for GitHub
+  // Copilot code review, the develop→main review convention). Unset = request no
+  // reviewers. Best-effort: a failure warns and never blocks the PR. (#182)
+  promotionReviewers: process.env.OKFFS_PROMOTION_REVIEWERS
+    ? process.env.OKFFS_PROMOTION_REVIEWERS.split(",").map((s) => s.trim()).filter(Boolean)
+    : [],
 };
 
 // Warn once at startup if the feature is half-configured. Non-fatal: the

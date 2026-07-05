@@ -286,10 +286,20 @@ export async function createPullRequest(
   body: string,
   head: string,
   base: string
-): Promise<{ number: number; html_url: string }> {
+): Promise<{ number: number; html_url: string; node_id: string }> {
   return request(`/repos/${owner}/${repo}/pulls`, {
     method: "POST",
     body: JSON.stringify({ title, head, base, body }),
+  });
+}
+
+// Request reviewers on a PR (REST). Used by promote_branch to put the configured
+// reviewers (e.g. Copilot's `copilot-pull-request-reviewer[bot]`) on the
+// develop→main gate PR. Bot/app reviewers go in `reviewers` alongside users.
+export async function requestReviewers(prNumber: number, reviewers: string[]): Promise<void> {
+  await request(`/repos/${owner}/${repo}/pulls/${prNumber}/requested_reviewers`, {
+    method: "POST",
+    body: JSON.stringify({ reviewers }),
   });
 }
 
