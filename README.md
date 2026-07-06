@@ -56,6 +56,7 @@ Claude infers labels (`bug`, `enhancement`, …) from the title and description 
 | `close_issue` | Closes an issue and tips you to `/clear` before the next one. |
 | `create_pull_request` | Opens a PR for an issue branch — generates the title/body, pushes the branch, always includes `Closes #N`, and comments back. Can write changelog fragments when `OKFFS_UPDATE_DOCS=true`. Pass `allow_empty: true` to backfill a **draft** tracking PR on a branch with no commits (pushes an empty init commit to diverge it). |
 | `commit_and_update` | Stages, commits (message from your `hint` or the diff), pushes, and posts a progress comment to the issue. |
+| `merge_pull_request` | The one okffs tool that **merges**: autonomously merges a green, review-resolved issue PR into the **base** branch (e.g. `develop`) using `OKFFS_BASE_MERGE_METHOD`, then closes the issue. Opt-in (`OKFFS_AUTO_MERGE_BASE=true`) and heavily gated — never touches `OKFFS_PROTECTED_BRANCH`, independently verifies checks/mergeability/threads. The `develop → main` promotion stays your manual merge. |
 | `list_pr_review_comments` | Fetches a PR's inline review threads and summaries. |
 | `reply_to_review_comment` | Replies to an inline review thread by id. |
 | `resolve_review_thread` | Resolves a review thread — only when `OKFFS_RESOLVE_THREADS=true`. |
@@ -137,6 +138,8 @@ All optional; unset unless noted. Grouped by concern — the same groups appear 
 | `OKFFS_PROTECTED_BRANCH` | — | A branch okffs must never autonomously **merge**, tag, or publish into (e.g. `main`). Governs *merging*, not PR *creation*: okffs will freely **open** a PR targeting it (opening is safe — the merge is already gated by branch protection + your manual merge) and just adds a reminder that the merge/tag stay with you. `prepare_release` flags merging/tagging into it as a manual, user-gated step. |
 | `OKFFS_IDENTIFIER` | — | Prefix for branch names: `{number}-{identifier}-{slug}`. |
 | `OKFFS_AUTO_PR` | `false` | Open a draft PR when a new issue branch is created. |
+| `OKFFS_BASE_MERGE_METHOD` / `OKFFS_PROTECTED_MERGE_METHOD` | `squash` / `merge` | PR merge method per branch tier (`squash`/`merge`/`rebase`). Records the convention; grants no merge permission. |
+| `OKFFS_AUTO_MERGE_BASE` | `false` | Let `merge_pull_request` autonomously merge a green, threads-resolved issue PR into the base branch. Never merges `OKFFS_PROTECTED_BRANCH`. |
 
 **Issue defaults & inference**
 
