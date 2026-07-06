@@ -160,6 +160,21 @@ export async function updateIssueBody(issueNumber: number, body: string): Promis
   });
 }
 
+// Mutate core issue fields on an existing issue (title/body/assignees/labels/
+// milestone) via a single REST PATCH. Only the keys present in `fields` are sent
+// — undefined keys are dropped by JSON.stringify, so omitted fields are left
+// unchanged. Note GitHub's PATCH REPLACES the whole labels/assignees set (it does
+// not merge), and milestone: null clears it. Returns the updated issue.
+export async function updateIssue(
+  issueNumber: number,
+  fields: { title?: string; body?: string; assignees?: string[]; labels?: string[]; milestone?: number | null }
+): Promise<{ number: number; html_url: string; title: string }> {
+  return request(`/repos/${owner}/${repo}/issues/${issueNumber}`, {
+    method: "PATCH",
+    body: JSON.stringify(fields),
+  });
+}
+
 export async function getDefaultBranch(): Promise<string> {
   if (config.baseBranch) return config.baseBranch;
   const data = await request<{ default_branch: string }>(`/repos/${owner}/${repo}`);
