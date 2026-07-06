@@ -5,6 +5,16 @@ See [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-07-06
+### Added
+- Address #217 review: allow clearing milestone in update_issue + accurate auth wording ([#218](https://github.com/neturely/okffs/issues/218))
+- Add merge-method-per-tier config: OKFFS_BASE_MERGE_METHOD / OKFFS_PROTECTED_MERGE_METHOD ([#209](https://github.com/neturely/okffs/issues/209))
+- create_pull_request: opt-in draft/empty-branch mode to backfill a PR for a branch with no commits ([#205](https://github.com/neturely/okffs/issues/205))
+- Add update_issue tool — mutate title/assignees/labels/milestone on an existing issue ([#203](https://github.com/neturely/okffs/issues/203))
+- Support GitHub native Issue Types: infer + set on create_issue, surface in list_issues ([#201](https://github.com/neturely/okffs/issues/201))
+### Changed
+- Autonomous base-branch merge for green issue PRs (opt-in, heavily gated; never touches protected) ([#211](https://github.com/neturely/okffs/issues/211))
+
 ## [0.6.0] - 2026-07-05
 ### Fixed
 - Reorganise env vars into labelled groups across .env.example and README (and fix stale/missing entries) ([#196](https://github.com/neturely/okffs/issues/196))
@@ -125,7 +135,8 @@ See [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `create_pull_request` commits the updated CHANGELOG onto the branch and pushes the branch before opening the PR, with non-blocking error handling ([#38](https://github.com/2b9sa2owa/okffs/issues/38)).
 - All git operations now run via `execFileSync` with argument arrays (no shell), removing command-injection risk from branch names and commit hints; tools also checkout the target branch before committing/pushing and restore the original branch afterward.
 
-[Unreleased]: https://github.com/neturely/okffs/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/neturely/okffs/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/neturely/okffs/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/neturely/okffs/compare/v0.5.2...v0.6.0
 [0.5.2]: https://github.com/neturely/okffs/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/neturely/okffs/compare/v0.5.0...v0.5.1
