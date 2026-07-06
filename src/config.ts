@@ -65,6 +65,14 @@ export const config = {
   // explicit param or the default is used then).
   inferPriority: process.env.OKFFS_INFER_PRIORITY !== "false",
   inferEffort: process.env.OKFFS_INFER_EFFORT !== "false",
+  // OKFFS_INFER_TYPE / OKFFS_DEFAULT_TYPE — native GitHub Issue Type (Task/Bug/
+  // Feature/Epic/Story) handling, parallel to priority/effort. When inference is
+  // on (the default), create_issue's description tells Claude to pick the fitting
+  // org-defined type from the task; OKFFS_DEFAULT_TYPE fills in when it can't
+  // judge (or when inference is off). Both no-op cleanly when the org defines no
+  // Issue Types / the token can't read them (org-level feature — see #201, #199).
+  inferType: process.env.OKFFS_INFER_TYPE !== "false",
+  defaultType: process.env.OKFFS_DEFAULT_TYPE || null,
   // OKFFS_PROJECT_INITIAL_STATUS — Status column a freshly auto-added issue
   // should land in (e.g. "Backlog"). Set after the draft PR is created so it
   // wins over GitHub's "PR linked to issue" workflow, which would otherwise flip

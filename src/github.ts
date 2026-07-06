@@ -204,17 +204,36 @@ export interface IssueSummary {
   title: string;
   html_url: string;
   body: string | null;
+  type: string | null; // native GitHub Issue Type name (e.g. Task/Bug/Feature), if set
 }
 
 export async function listIssues(): Promise<IssueSummary[]> {
   // The issues endpoint also returns pull requests; filter them out via the
-  // pull_request field that only PRs carry.
-  const raw = await request<Array<IssueSummary & { pull_request?: unknown }>>(
+  // pull_request field that only PRs carry. Issue objects carry `type: {name}`
+  // (org-level native Issue Type) when the org defines types and one is set.
+  const raw = await request<Array<Omit<IssueSummary, "type"> & { pull_request?: unknown; type?: { name: string } | null }>>(
     `/repos/${owner}/${repo}/issues?state=open&per_page=100`
   );
   return raw
     .filter((i) => !i.pull_request)
-    .map(({ number, title, html_url, body }) => ({ number, title, html_url, body }));
+    .map(({ number, title, html_url, body, type }) => ({ number, title, html_url, body, type: type?.name ?? null }));
+}
+
+// Read the org's native Issue Types (Task/Bug/Feature/…). Org-level: 404s on a
+// user-owned repo and needs an org-capable token. Callers treat any failure as
+// "types unavailable" and skip cleanly (mirrors the Projects / org Issue Field
+// gating). Returns the raw list; issue_types.ts memoizes + filters to enabled.
+export async function getOrgIssueTypes(): Promise<Array<{ name: string; is_enabled: boolean }>> {
+  return request(`/orgs/${owner}/issue-types`);
+}
+
+// Set a native Issue Type on an issue by name (REST PATCH `type`). Passing null
+// clears it. Verified against the org's enabled types before calling.
+export async function setIssueType(issueNumber: number, type: string | null): Promise<void> {
+  await request(`/repos/${owner}/${repo}/issues/${issueNumber}`, {
+    method: "PATCH",
+    body: JSON.stringify({ type }),
+  });
 }
 
 export interface PullRequestSummary {

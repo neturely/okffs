@@ -10,7 +10,9 @@ import {
   getBoardFieldOptions,
   type BoardAddResult,
   type InitialStatusResult,
+  type BoardFieldOutcome,
 } from "../board.js";
+import { applyIssueType, getIssueTypeNames } from "../issue_types.js";
 
 export const name = "create_issue";
 
@@ -20,13 +22,14 @@ const DESCRIPTION_HEAD =
 const DESCRIPTION_TAIL =
   " If the user mentions that this issue is blocked by, blocking, or a child of another issue, call link_issues after creating this issue to set the relationship. Returns the issue URL, issue number, and branch name.";
 
-// Priority/Effort inference guidance is woven into the tool description so Claude
-// uses its own judgement to triage the issue it's creating (like it already does
-// for labels), falling back to OKFFS_DEFAULT_* only when it can't tell. Toggle per
-// field with OKFFS_INFER_PRIORITY / OKFFS_INFER_EFFORT (default on). When the
-// board's real option names are known they replace the generic scale so Claude
-// infers against the actual options (#133) — e.g. a P0/P1/P2 board.
-function inferenceGuidance(priorityOpts?: string[] | null, effortOpts?: string[] | null): string {
+// Priority/Effort/Type inference guidance is woven into the tool description so
+// Claude uses its own judgement to triage the issue it's creating (like it already
+// does for labels), falling back to OKFFS_DEFAULT_* only when it can't tell. Toggle
+// per field with OKFFS_INFER_PRIORITY / OKFFS_INFER_EFFORT / OKFFS_INFER_TYPE
+// (default on). When the board's real option names / the org's real Issue Type
+// names are known they replace the generic scale so Claude infers against the
+// actual values (#133, #201) — e.g. a P0/P1/P2 board, or an org with Epic/Story.
+function inferenceGuidance(priorityOpts?: string[] | null, effortOpts?: string[] | null, typeOpts?: string[] | null): string {
   const bits: string[] = [];
   if (config.inferPriority) {
     const scale = priorityOpts?.length ? priorityOpts.join(", ") : "Urgent, High, Medium, Low";
@@ -36,30 +39,38 @@ function inferenceGuidance(priorityOpts?: string[] | null, effortOpts?: string[]
     const scale = effortOpts?.length ? effortOpts.join(", ") : "High, Medium, Low";
     bits.push(`infer an \`effort\` from the expected amount of work (board options: ${scale})`);
   }
+  if (config.inferType) {
+    const scale = typeOpts?.length ? typeOpts.join(", ") : "Task, Bug, Feature";
+    bits.push(`infer a \`type\` — the native GitHub Issue Type — from what kind of work it is (org types: ${scale}; e.g. a fix → Bug, a new capability → Feature, a broad multi-issue effort → Epic, a small chore → Task)`);
+  }
   if (bits.length === 0) return "";
   return (
-    ` Also ${bits.join(" and ")}, passing the value(s) in the matching parameter. ` +
-    "okffs matches these against the board's actual options and falls back to OKFFS_DEFAULT_PRIORITY / OKFFS_DEFAULT_EFFORT when you omit them — so if you genuinely can't judge, omit the field rather than guessing."
+    ` Also ${bits.join(", and ")}, passing the value(s) in the matching parameter. ` +
+    "okffs matches these against the board's / org's actual options and falls back to OKFFS_DEFAULT_PRIORITY / OKFFS_DEFAULT_EFFORT / OKFFS_DEFAULT_TYPE when you omit them — so if you genuinely can't judge, omit the field rather than guessing."
   );
 }
 
-// Static description (generic scale) — the safe fallback used before the board is
-// reachable and whenever real options can't be read.
+// Static description (generic scale) — the safe fallback used before the board /
+// org types are reachable and whenever real options can't be read.
 export const description = DESCRIPTION_HEAD + inferenceGuidance() + DESCRIPTION_TAIL;
 
-// Dynamic description resolved at tools/list time (index.ts awaits this). When
-// auto-add is on and inference is enabled, inject the board's real Priority/Effort
-// option names so Claude infers against them (#133). Any miss falls back to the
-// static description. Cheap after the first call — board metadata is memoized.
+// Dynamic description resolved at tools/list time (index.ts awaits this). Inject
+// the board's real Priority/Effort options (when auto-add is on — #133) and the
+// org's real Issue Type names (when type inference is on — #201) so Claude infers
+// against them. Any miss falls back to the generic scale. Cheap after the first
+// call — board metadata and org types are memoized.
 export async function getDescription(): Promise<string> {
-  if (!boardAutoAddEnabled()) return description;
-  if (!config.inferPriority && !config.inferEffort) return description;
-  const [priorityOpts, effortOpts] = await Promise.all([
-    config.inferPriority ? getBoardFieldOptions("Priority") : Promise.resolve(null),
-    config.inferEffort ? getBoardFieldOptions("Effort") : Promise.resolve(null),
+  const boardOn = boardAutoAddEnabled();
+  const wantPriority = boardOn && config.inferPriority;
+  const wantEffort = boardOn && config.inferEffort;
+  if (!wantPriority && !wantEffort && !config.inferType) return description;
+  const [priorityOpts, effortOpts, typeOpts] = await Promise.all([
+    wantPriority ? getBoardFieldOptions("Priority") : Promise.resolve(null),
+    wantEffort ? getBoardFieldOptions("Effort") : Promise.resolve(null),
+    config.inferType ? getIssueTypeNames() : Promise.resolve(null),
   ]);
-  if (!priorityOpts && !effortOpts) return description;
-  return DESCRIPTION_HEAD + inferenceGuidance(priorityOpts, effortOpts) + DESCRIPTION_TAIL;
+  if (!priorityOpts && !effortOpts && !typeOpts) return description;
+  return DESCRIPTION_HEAD + inferenceGuidance(priorityOpts, effortOpts, typeOpts) + DESCRIPTION_TAIL;
 }
 
 export const inputSchema = z.object({
@@ -74,6 +85,9 @@ export const inputSchema = z.object({
   effort: z.string().optional().describe(
     "Optional Project board Effort (e.g. High, Medium, Low) — matched against the board's Effort options (project-native field, or a GitHub org Issue Field when OKFFS_CLASSIC_PAT is set). Only applied when OKFFS_PROJECT_AUTO_ADD=true and an Effort field exists. If omitted, OKFFS_DEFAULT_EFFORT is used when set."
   ),
+  type: z.string().optional().describe(
+    "Optional native GitHub Issue Type (e.g. Task, Bug, Feature — plus Epic/Story if the org defines them) — matched against the org's enabled Issue Types. Org-level feature: skipped cleanly on a user-owned repo or when the token can't read them. If omitted, OKFFS_DEFAULT_TYPE is used when set."
+  ),
 });
 
 export async function handler(input: z.infer<typeof inputSchema>) {
@@ -81,9 +95,11 @@ export async function handler(input: z.infer<typeof inputSchema>) {
   const resolvedLabels = [
     ...new Set([...(input.labels ?? []), ...config.defaultLabels])
   ];
-  // Fall back to OKFFS_DEFAULT_PRIORITY / OKFFS_DEFAULT_EFFORT when not given.
+  // Fall back to OKFFS_DEFAULT_PRIORITY / OKFFS_DEFAULT_EFFORT / OKFFS_DEFAULT_TYPE
+  // when not given.
   const resolvedPriority = input.priority ?? config.defaultPriority;
   const resolvedEffort = input.effort ?? config.defaultEffort;
+  const resolvedType = input.type ?? config.defaultType;
 
   const issue = await createIssue(input.title, input.description, resolvedAssignees, resolvedLabels, input.milestone);
 
@@ -95,6 +111,14 @@ export async function handler(input: z.infer<typeof inputSchema>) {
 
   const updatedBody = `${input.description}\n\n**Branch:** \`${branchName}\``;
   await updateIssueBody(issue.number, updatedBody);
+
+  // Set the native GitHub Issue Type (Task/Bug/Feature/…). Non-fatal, like the
+  // board writes: any miss (user repo, no org types, unknown name) is surfaced in
+  // the response and never blocks issue creation.
+  let typeOutcome: BoardFieldOutcome | null = null;
+  if (resolvedType) {
+    typeOutcome = await applyIssueType(issue.number, resolvedType);
+  }
 
   // Add the issue to the configured Project board (fallback for users without
   // native board automation) and set Priority/Effort. Non-fatal, mirroring the
@@ -176,6 +200,14 @@ export async function handler(input: z.infer<typeof inputSchema>) {
   if (resolvedLabels.length > 0) {
     const source = input.labels ? "" : " (default)";
     lines.push(`Labels: ${resolvedLabels.join(", ")}${source}`);
+  }
+
+  if (typeOutcome) {
+    lines.push(
+      "applied" in typeOutcome
+        ? `Type: ${typeOutcome.applied}${input.type ? "" : " (default)"}`
+        : `⚠ Type "${resolvedType}" not set — ${typeOutcome.skipped}`
+    );
   }
 
   const addedToBoard = Boolean(boardAdd);
