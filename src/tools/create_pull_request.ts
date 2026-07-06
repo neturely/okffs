@@ -6,6 +6,7 @@ import {
   getBranchCommits,
   getIssueComments,
   createPullRequest,
+  createDraftPullRequest,
   getOpenPullRequestForBranch,
   updatePullRequest,
   markPullRequestReady,
@@ -15,17 +16,18 @@ import {
 } from "../github.js";
 import { config } from "../config.js";
 import { updateProjectDocs } from "../docs.js";
-import { git, currentBranch } from "../git.js";
+import { git, currentBranch, pushEmptyInitCommit } from "../git.js";
 
 export const name = "create_pull_request";
 
 export const description =
-  "Create a pull request for the current issue branch. Reads the issue, its comments, and commits to generate a PR title and body. Always includes Closes #N. If OKFFS_UPDATE_DOCS is true, writes a per-issue changelog fragment under .changes/unreleased/ (assembled into CHANGELOG.md at release time by prepare_release — not a direct CHANGELOG.md edit), plus SECURITY.md for security-related changes, and commits them onto the branch before creating the PR. If a PR already exists for the branch (e.g. a draft opened by create_issue under OKFFS_AUTO_PR=true), it is updated and marked ready for review instead of erroring. Posts a summary comment to the issue. If the issue has no okffs-created branch link (no **Branch:** line — e.g. a pre-okffs issue or a hand-made branch), pass an explicit branch, or check out a branch named {issue-number}-… and okffs infers it; either way it backfills the **Branch:** line. If the PR targets OKFFS_PROTECTED_BRANCH, okffs still opens it (opening is safe and reversible) and adds a reminder that the merge/tag stay with the user — OKFFS_PROTECTED_BRANCH governs autonomous merging, never PR creation.";
+  "Create a pull request for the current issue branch. Reads the issue, its comments, and commits to generate a PR title and body. Always includes Closes #N. If OKFFS_UPDATE_DOCS is true, writes a per-issue changelog fragment under .changes/unreleased/ (assembled into CHANGELOG.md at release time by prepare_release — not a direct CHANGELOG.md edit), plus SECURITY.md for security-related changes, and commits them onto the branch before creating the PR. If a PR already exists for the branch (e.g. a draft opened by create_issue under OKFFS_AUTO_PR=true), it is updated and marked ready for review instead of erroring. By default, a branch with no commits ahead of base is refused (a PR needs a diff); pass allow_empty: true to instead push an empty init commit so the branch diverges and open a **draft** tracking PR — the same mechanism create_issue uses under OKFFS_AUTO_PR, for backfilling a PR onto a branch that was created empty. Posts a summary comment to the issue. If the issue has no okffs-created branch link (no **Branch:** line — e.g. a pre-okffs issue or a hand-made branch), pass an explicit branch, or check out a branch named {issue-number}-… and okffs infers it; either way it backfills the **Branch:** line. If the PR targets OKFFS_PROTECTED_BRANCH, okffs still opens it (opening is safe and reversible) and adds a reminder that the merge/tag stay with the user — OKFFS_PROTECTED_BRANCH governs autonomous merging, never PR creation.";
 
 export const inputSchema = z.object({
   issue_number: z.number().int().positive().describe("The issue number to create a PR for"),
   summary: z.string().optional().describe("Optional summary of what was done — used in PR body and issue comment"),
   branch: z.string().optional().describe("Branch to open the PR from, for issues whose branch okffs didn't create (no **Branch:** line in the body). Usually unnecessary — okffs-created issues carry the link, and a checked-out branch named {issue-number}-… is inferred automatically. When used, okffs backfills the **Branch:** line onto the issue."),
+  allow_empty: z.boolean().optional().describe("When the branch has no commits ahead of base, push an empty init commit so it diverges and open a DRAFT tracking PR instead of refusing. Opt-in (default false) — use to backfill a PR onto a branch that was created empty. Ignored when the branch already has commits."),
 });
 
 export async function handler(input: z.infer<typeof inputSchema>) {
@@ -94,17 +96,40 @@ export async function handler(input: z.infer<typeof inputSchema>) {
     }
   }
 
-  const commits = await getBranchCommits(branchName, baseBranch);
+  let commits = await getBranchCommits(branchName, baseBranch);
   const comments = await getIssueComments(input.issue_number);
 
+  // Whether this is a backfilled tracking PR (empty branch + allow_empty). Such
+  // PRs are opened as drafts — there's no real work to review yet.
+  let draftMode = false;
+
   if (commits.length === 0) {
-    await addIssueComment(
-      input.issue_number,
-      `PR not created — branch \`${branchName}\` has no commits ahead of \`${baseBranch}\`. Push commits to the branch first, then create the PR.`
-    );
-    return {
-      content: [{ type: "text" as const, text: `PR not created — branch \`${branchName}\` has no commits ahead of \`${baseBranch}\`. Push commits first.` }],
-    };
+    if (!input.allow_empty) {
+      await addIssueComment(
+        input.issue_number,
+        `PR not created — branch \`${branchName}\` has no commits ahead of \`${baseBranch}\`. Push commits to the branch first, or pass \`allow_empty: true\` to open a draft tracking PR.`
+      );
+      return {
+        content: [{ type: "text" as const, text: `PR not created — branch \`${branchName}\` has no commits ahead of \`${baseBranch}\`. Push commits first, or pass allow_empty: true for a draft tracking PR.` }],
+      };
+    }
+    // allow_empty: push an empty init commit so the branch diverges from base,
+    // then open a draft PR — the same mechanism create_issue uses under
+    // OKFFS_AUTO_PR (shared helper), applied to an already-created empty branch.
+    try {
+      pushEmptyInitCommit(branchName, input.issue_number);
+    } catch (err) {
+      await addIssueComment(
+        input.issue_number,
+        `PR not created — branch \`${branchName}\` is empty and okffs could not push an init commit to diverge it from \`${baseBranch}\`. Push a commit manually, then retry.`
+      );
+      return {
+        content: [{ type: "text" as const, text: `PR not created — could not push an empty init commit to \`${branchName}\`: ${err instanceof Error ? err.message : String(err)}` }],
+      };
+    }
+    draftMode = true;
+    // Re-read so the PR body's Changes section reflects the new init commit.
+    commits = await getBranchCommits(branchName, baseBranch);
   }
 
   const title = `Close #${input.issue_number} - ${issue.title}`;
@@ -238,6 +263,11 @@ export async function handler(input: z.infer<typeof inputSchema>) {
     }
     pr = { number: existing.number, html_url: existing.html_url };
     action = existing.draft ? "finalized (marked ready)" : "updated";
+  } else if (draftMode) {
+    // Empty-branch backfill — open a draft tracking PR (createDraftPullRequest
+    // returns just number + html_url, which is all we surface below).
+    pr = await createDraftPullRequest(title, body, branchName, baseBranch);
+    action = "created (draft tracking PR)";
   } else {
     pr = await createPullRequest(title, body, branchName, baseBranch);
     action = "created";

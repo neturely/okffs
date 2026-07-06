@@ -107,7 +107,7 @@ When `OKFFS_IDENTIFIER` is set, a project-scoped prefix is inserted: `{issue-num
 - `OKFFS_AUTO_PR` no longer triggers a PR on close — the draft PR is opened at branch-creation time by `create_issue`. To accept the draft PR immediately, `create_issue` first pushes an empty init commit so the branch diverges from base.
 - `commit_and_update` tool — stages all changes, generates a conventional commit message, commits, pushes to the current branch, and posts a rich progress comment to the linked issue.
 - GitHub natively closes the issue on merge via `Closes #N` — no webhook infrastructure needed. Note: this only fires when merging into the repo's default branch. With a `develop`-based workflow (`OKFFS_BASE_BRANCH=develop`), merge to `develop` does not auto-close; use `close_issue`.
-- Edge case: if the branch has no commits ahead of the base branch, a friendly comment is posted instead of erroring.
+- Edge case: if the branch has no commits ahead of the base branch, a friendly comment is posted instead of erroring — **unless** `allow_empty: true` is passed, in which case okffs pushes an empty init commit to diverge the branch and opens a **draft** tracking PR (the same empty-init-commit mechanism `create_issue` uses under `OKFFS_AUTO_PR`, factored into a shared `pushEmptyInitCommit` helper). Opt-in per call — use it to backfill a PR onto a branch that was created empty (#205).
 
 ### Phase 5 — GitHub Projects v2 ✓ Complete
 
