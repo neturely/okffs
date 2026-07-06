@@ -54,7 +54,7 @@ Claude infers labels (`bug`, `enhancement`, …) from the title and description 
 | `comment_issue` | Posts a comment — handy for logging what a branch did. |
 | `link_issues` | Links two issues (`blocked_by`, `blocking`, `parent`), stored under a `## Relationships` section. |
 | `close_issue` | Closes an issue and tips you to `/clear` before the next one. |
-| `create_pull_request` | Opens a PR for an issue branch — generates the title/body, pushes the branch, always includes `Closes #N`, and comments back. Can write changelog fragments when `OKFFS_UPDATE_DOCS=true`. |
+| `create_pull_request` | Opens a PR for an issue branch — generates the title/body, pushes the branch, always includes `Closes #N`, and comments back. Can write changelog fragments when `OKFFS_UPDATE_DOCS=true`. Pass `allow_empty: true` to backfill a **draft** tracking PR on a branch with no commits (pushes an empty init commit to diverge it). |
 | `commit_and_update` | Stages, commits (message from your `hint` or the diff), pushes, and posts a progress comment to the issue. |
 | `list_pr_review_comments` | Fetches a PR's inline review threads and summaries. |
 | `reply_to_review_comment` | Replies to an inline review thread by id. |

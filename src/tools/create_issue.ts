@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { createIssue, updateIssueBody, getDefaultBranch, getRef, createBranch, buildBranchName, createDraftPullRequest } from "../github.js";
 import { config } from "../config.js";
-import { git, currentBranch } from "../git.js";
+import { pushEmptyInitCommit } from "../git.js";
 import {
   boardAutoAddEnabled,
   addIssueToBoard,
@@ -140,23 +140,11 @@ export async function handler(input: z.infer<typeof inputSchema>) {
   if (config.autoPR) {
     // Push an empty init commit so the branch diverges from base, allowing
     // GitHub to accept a draft PR immediately. Only needed for the auto-PR flow.
-    const previousBranch = currentBranch();
+    // Shared with create_pull_request's allow_empty backfill (#205).
     try {
-      git(["fetch", "origin"]);
-      git(["checkout", branchName]);
-      git(["commit", "--allow-empty", "-m", `chore: init branch for #${issue.number}`]);
-      git(["push", "origin", branchName]);
+      pushEmptyInitCommit(branchName, issue.number);
     } catch (err) {
       console.warn("[okffs] Failed to push init commit:", err instanceof Error ? err.message : err);
-    } finally {
-      // Always restore the caller's original branch, even if a step above failed.
-      if (previousBranch && previousBranch !== branchName) {
-        try {
-          git(["checkout", previousBranch]);
-        } catch (err) {
-          console.warn("[okffs] Failed to restore branch:", err instanceof Error ? err.message : err);
-        }
-      }
     }
 
     try {
