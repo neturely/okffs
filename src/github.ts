@@ -353,6 +353,56 @@ export async function getOpenPullRequestForBranch(
   return prs.length > 0 ? prs[0] : null;
 }
 
+// Full PR detail — includes the mergeability signals the autonomous-merge gate
+// needs (`mergeable`, `mergeable_state`) that the list endpoint omits.
+export interface PullRequestDetail {
+  number: number;
+  state: string; // "open" | "closed"
+  draft: boolean;
+  merged: boolean;
+  mergeable: boolean | null; // null while GitHub is still computing it
+  mergeable_state: string; // clean | unstable | dirty | blocked | behind | draft | has_hooks | unknown
+  html_url: string;
+  head: { sha: string; ref: string };
+  base: { ref: string };
+}
+
+export async function getPullRequest(prNumber: number): Promise<PullRequestDetail> {
+  return request(`/repos/${owner}/${repo}/pulls/${prNumber}`);
+}
+
+// Legacy combined commit status (the older Statuses API — e.g. many CI providers).
+export interface CombinedStatus {
+  state: "success" | "failure" | "pending" | "error";
+  statuses: Array<{ state: string; context: string }>;
+}
+export async function getCombinedStatus(sha: string): Promise<CombinedStatus> {
+  return request(`/repos/${owner}/${repo}/commits/${sha}/status`);
+}
+
+// Check runs (the newer Checks API — e.g. GitHub Actions). Independent of the
+// Statuses API above; a commit can have either or both, so the merge gate checks
+// both to decide "are the checks green".
+export interface CheckRunsResult {
+  total_count: number;
+  check_runs: Array<{ name: string; status: string; conclusion: string | null }>;
+}
+export async function getCheckRuns(sha: string): Promise<CheckRunsResult> {
+  return request(`/repos/${owner}/${repo}/commits/${sha}/check-runs?per_page=100`);
+}
+
+// Merge a PR with an explicit method (squash | merge | rebase). Throws on any
+// GitHub refusal (405 not mergeable, 409 head moved, etc.) so the caller surfaces it.
+export async function mergePullRequest(
+  prNumber: number,
+  mergeMethod: string
+): Promise<{ sha: string; merged: boolean; message: string }> {
+  return request(`/repos/${owner}/${repo}/pulls/${prNumber}/merge`, {
+    method: "PUT",
+    body: JSON.stringify({ merge_method: mergeMethod }),
+  });
+}
+
 export async function updatePullRequest(
   prNumber: number,
   fields: { title?: string; body?: string }

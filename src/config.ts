@@ -46,6 +46,13 @@ export const config = {
   // Invalid values warn [okffs] and fall back to the default. #209.
   baseMergeMethod: parseMergeMethod("OKFFS_BASE_MERGE_METHOD", "squash"),
   protectedMergeMethod: parseMergeMethod("OKFFS_PROTECTED_MERGE_METHOD", "merge"),
+  // OKFFS_AUTO_MERGE_BASE=true — opt-in to let merge_pull_request autonomously
+  // merge a green, threads-resolved issue PR into the BASE branch (e.g. develop),
+  // using OKFFS_BASE_MERGE_METHOD. Default false. Heavily gated (see the tool):
+  // never merges OKFFS_PROTECTED_BRANCH, refuses when that var is unset, and
+  // independently verifies checks + mergeability rather than trusting the ruleset.
+  // The protected branch stays a manual, user-driven merge no matter what. #211.
+  autoMergeBase: process.env.OKFFS_AUTO_MERGE_BASE === "true",
   updateDocs: process.env.OKFFS_UPDATE_DOCS === "true",
   // OKFFS_AUTO_PR=true — creates a draft PR when a new issue branch is created
   autoPR: process.env.OKFFS_AUTO_PR === "true",
