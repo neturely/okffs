@@ -30,12 +30,13 @@ import * as resolveReviewThread from "./tools/resolve_review_thread.js";
 import * as prepareRelease from "./tools/prepare_release.js";
 import * as updateProjectStatus from "./tools/update_project_status.js";
 import * as setIssueFields from "./tools/set_issue_fields.js";
+import * as updateIssue from "./tools/update_issue.js";
 import * as promoteBranch from "./tools/promote_branch.js";
 
 import * as addressPrReview from "./prompts/address_pr_review.js";
 import * as updateGuidance from "./prompts/update_guidance.js";
 
-const tools = [createIssue, listIssues, closeIssue, deleteIssue, deleteBranch, getIssue, commentIssue, createIssuesFromList, plan, linkIssues, createPullRequest, commitAndUpdate, listPrReviewComments, replyToReviewComment, resolveReviewThread, prepareRelease, updateProjectStatus, setIssueFields, promoteBranch];
+const tools = [createIssue, listIssues, closeIssue, deleteIssue, deleteBranch, getIssue, commentIssue, createIssuesFromList, plan, linkIssues, createPullRequest, commitAndUpdate, listPrReviewComments, replyToReviewComment, resolveReviewThread, prepareRelease, updateProjectStatus, setIssueFields, updateIssue, promoteBranch];
 
 const prompts = [addressPrReview, updateGuidance];
 
@@ -63,6 +64,7 @@ Common action → tool:
 - Progress: commit_and_update (stage + commit + push + issue comment) — prefer over raw git commit/push.
 - Open/finalize an issue's PR (into the base branch): create_pull_request (always adds Closes #N).
 - Promotion/release gate — a base→protected PR with no issue, e.g. develop→main: promote_branch (issue-less; adds the PR to the board; NEVER use raw \`gh pr create\` for this).
+- Edit an existing issue's core fields (title, assignees, labels, milestone, body): update_issue — prefer over raw \`gh issue edit\`. (Board Priority/Effort is set_issue_fields; Status column is update_project_status — those aren't issue fields.)
 - Board: create_issue sets an inferred priority/effort at creation; set them on an EXISTING issue with set_issue_fields; move columns with update_project_status (Backlog/Ready/In Progress/Review — Done is GitHub's own automation).
 - PR review: list_pr_review_comments → fix → reply_to_review_comment → resolve_review_thread (honours OKFFS_RESOLVE_THREADS); or the /okffs:address_pr_review prompt.
 - Release prep: prepare_release (bumps version + rolls the changelog; does NOT tag or publish).
