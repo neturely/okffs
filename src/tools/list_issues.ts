@@ -15,7 +15,7 @@ import { getProjectFieldsByIssueNumber, getOrgIssueFieldValuesByNumber } from ".
 export const name = "list_issues";
 
 export const description =
-  "List all open GitHub issues, each with its branch, any linked open or draft PR, its board column (project), its Priority, and its relationships (parent, children, blocked-by, blocking) shown as a tree. Issues are ordered by Priority (Urgent → High → Medium → Low → unset) so the most important work surfaces first — factor Priority in when deciding what to do next. Replaces the need for a separate PR-listing tool.";
+  "List all open GitHub issues, each with its branch, any linked open or draft PR, its board column (project), its Priority, its native Issue Type (Task/Bug/Feature/…, when the org defines them), and its relationships (parent, children, blocked-by, blocking) shown as a tree. Issues are ordered by Priority (Urgent → High → Medium → Low → unset) so the most important work surfaces first — factor Priority in when deciding what to do next. Replaces the need for a separate PR-listing tool.";
 
 export const inputSchema = z.object({});
 
@@ -124,6 +124,12 @@ export async function handler(_input: z.infer<typeof inputSchema>) {
     const effort = effortByIssue.get(issue.number);
     if (effort) {
       lines.push(`    effort: ${effort}`);
+    }
+
+    // Native GitHub Issue Type (Task/Bug/Feature/…), read straight off the issue
+    // object — no extra fetch. Absent on user repos / when the org defines none.
+    if (issue.type) {
+      lines.push(`    type: ${issue.type}`);
     }
 
     // Relationships as a small tree under the issue.

@@ -17,12 +17,14 @@ import {
   renderBoardLines,
   type BoardAddResult,
   type InitialStatusResult,
+  type BoardFieldOutcome,
 } from "../board.js";
+import { applyIssueType } from "../issue_types.js";
 
 export const name = "plan";
 
 export const description =
-  "Plan a piece of work and create all the resulting GitHub issues (with branches, draft PRs when OKFFS_AUTO_PR=true, and board placement when OKFFS_PROJECT_AUTO_ADD=true) in one shot. Given a free-text description of the work, break it down yourself into a structured list of issues — each with a title, description, inferred labels, an inferred priority/effort where you can judge it, and any relationships between them — and pass that breakdown as the tasks array. Infer labels from GitHub's defaults: bug, documentation, duplicate, enhancement, good first issue, help wanted, invalid, question, wontfix. Express dependencies via per-task relationships, referencing other tasks by their 1-based position in the list. Two-step confirmation: call once to preview the plan, then re-call with confirmed: true to create everything.";
+  "Plan a piece of work and create all the resulting GitHub issues (with branches, draft PRs when OKFFS_AUTO_PR=true, and board placement when OKFFS_PROJECT_AUTO_ADD=true) in one shot. Given a free-text description of the work, break it down yourself into a structured list of issues — each with a title, description, inferred labels, an inferred priority/effort where you can judge it, an inferred native GitHub Issue Type (Task/Bug/Feature/… — commonly Epic for the overall effort and Task/Story/Feature/Bug for its children), and any relationships between them — and pass that breakdown as the tasks array. Infer labels from GitHub's defaults: bug, documentation, duplicate, enhancement, good first issue, help wanted, invalid, question, wontfix. Express dependencies via per-task relationships, referencing other tasks by their 1-based position in the list. Two-step confirmation: call once to preview the plan, then re-call with confirmed: true to create everything.";
 
 const relationshipSchema = z.object({
   type: z
@@ -48,6 +50,9 @@ const taskSchema = z.object({
   ),
   effort: z.string().optional().describe(
     "Optional Project board Effort (e.g. High, Medium, Low). Only applied when OKFFS_PROJECT_AUTO_ADD=true; falls back to OKFFS_DEFAULT_EFFORT when omitted."
+  ),
+  type: z.string().optional().describe(
+    "Optional native GitHub Issue Type (e.g. Task, Bug, Feature, Epic, Story) — matched against the org's enabled Issue Types. Skipped cleanly when unavailable; falls back to OKFFS_DEFAULT_TYPE when omitted."
   ),
   relationships: z
     .array(relationshipSchema)
@@ -114,9 +119,11 @@ export async function handler(input: z.infer<typeof inputSchema>) {
     relationships: z.infer<typeof relationshipSchema>[];
     resolvedPriority?: string | null;
     resolvedEffort?: string | null;
+    resolvedType?: string | null;
     boardAdd: BoardAddResult | null;
     boardError: string | null;
     initialStatus: InitialStatusResult | null;
+    typeOutcome: BoardFieldOutcome | null;
   }> = [];
 
   for (const task of input.tasks) {
@@ -124,6 +131,7 @@ export async function handler(input: z.infer<typeof inputSchema>) {
     const resolvedLabels = [...new Set([...(task.labels ?? []), ...config.defaultLabels])];
     const resolvedPriority = task.priority ?? config.defaultPriority;
     const resolvedEffort = task.effort ?? config.defaultEffort;
+    const resolvedType = task.type ?? config.defaultType;
 
     const issue = await createIssue(
       task.title,
@@ -137,6 +145,12 @@ export async function handler(input: z.infer<typeof inputSchema>) {
 
     const body = `${task.description}\n\n**Branch:** \`${branchName}\``;
     await updateIssueBody(issue.number, body);
+
+    // Native Issue Type — non-fatal per task, surfaced in the result below.
+    let typeOutcome: BoardFieldOutcome | null = null;
+    if (resolvedType) {
+      typeOutcome = await applyIssueType(issue.number, resolvedType);
+    }
 
     // Add to the board + set Priority/Effort now; the initial Status is applied
     // in a later pass, after any draft PR, so it wins GitHub's linked-PR
@@ -160,9 +174,11 @@ export async function handler(input: z.infer<typeof inputSchema>) {
       relationships: task.relationships ?? [],
       resolvedPriority,
       resolvedEffort,
+      resolvedType,
       boardAdd,
       boardError,
       initialStatus: null,
+      typeOutcome,
     });
   }
 
@@ -260,6 +276,13 @@ export async function handler(input: z.infer<typeof inputSchema>) {
         indent: "  ",
       })
     );
+    if (entry.typeOutcome) {
+      lines.push(
+        "applied" in entry.typeOutcome
+          ? `  Type: ${entry.typeOutcome.applied}`
+          : `  ⚠ Type "${entry.resolvedType}" not set — ${entry.typeOutcome.skipped}`
+      );
+    }
     return lines.join("\n");
   });
 

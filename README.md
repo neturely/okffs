@@ -46,10 +46,10 @@ Claude infers labels (`bug`, `enhancement`, …) from the title and description 
 
 | Tool | What it does |
 |------|-------------|
-| `create_issue` | Creates an issue and a matching branch. Infers labels, and a board `priority`/`effort` from the task (toggle with `OKFFS_INFER_PRIORITY`/`OKFFS_INFER_EFFORT`). Optional `assignees`, `labels`, `milestone`, `priority`, `effort`. Opens a draft PR immediately when `OKFFS_AUTO_PR=true`. |
-| `create_issues_from_list` | Creates many issues + branches from a task list in one shot. Confirms first. Per-task `labels`, `assignees`, `milestone`, `priority`, `effort`. |
-| `plan` | Give it a free-text description plus the breakdown Claude generates (titles, descriptions, labels, relationships); it creates every issue + branch, wires up relationships, and opens draft PRs when `OKFFS_AUTO_PR=true`. Confirms first. |
-| `list_issues` | Lists open issues with branch, linked PR, board column, `priority:`/`effort:`, and relationships as a tree — ordered by priority so the most important work is on top. |
+| `create_issue` | Creates an issue and a matching branch. Infers labels, a board `priority`/`effort`, and a native Issue Type from the task (toggle with `OKFFS_INFER_PRIORITY`/`OKFFS_INFER_EFFORT`/`OKFFS_INFER_TYPE`). Optional `assignees`, `labels`, `milestone`, `priority`, `effort`, `type`. Opens a draft PR immediately when `OKFFS_AUTO_PR=true`. |
+| `create_issues_from_list` | Creates many issues + branches from a task list in one shot. Confirms first. Per-task `labels`, `assignees`, `milestone`, `priority`, `effort`, `type`. |
+| `plan` | Give it a free-text description plus the breakdown Claude generates (titles, descriptions, labels, priority/effort/type, relationships); it creates every issue + branch, wires up relationships, and opens draft PRs when `OKFFS_AUTO_PR=true`. Confirms first. |
+| `list_issues` | Lists open issues with branch, linked PR, board column, `priority:`/`effort:`, native `type:`, and relationships as a tree — ordered by priority so the most important work is on top. |
 | `get_issue` | Full details for one issue: title, body, labels, assignees, branch, status. |
 | `comment_issue` | Posts a comment — handy for logging what a branch did. |
 | `link_issues` | Links two issues (`blocked_by`, `blocking`, `parent`), stored under a `## Relationships` section. |
@@ -61,7 +61,8 @@ Claude infers labels (`bug`, `enhancement`, …) from the title and description 
 | `resolve_review_thread` | Resolves a review thread — only when `OKFFS_RESOLVE_THREADS=true`. |
 | `prepare_release` | Bumps the version, rolls the CHANGELOG, commits on a release branch, and opens a PR. Confirms first; does not tag or publish. |
 | `update_project_status` | Moves an issue between board columns (`Backlog`, `Ready`, `In Progress`, `Review`). Needs `OKFFS_PROJECT_ENABLED`. |
-| `set_issue_fields` | Sets board Priority/Effort on an **existing** issue (adds it to the board first if needed) — handles project-native and org-level Issue Fields. `create_issue` only sets these at creation; use this afterwards. Status stays with `update_project_status`. |
+| `set_issue_fields` | Sets board Priority/Effort **and/or the native Issue Type** on an **existing** issue. Priority/Effort handle project-native and org-level Issue Fields (needs `OKFFS_PROJECT_ENABLED`); `type` is org-native and works independently. `create_issue` only sets these at creation; use this afterwards. Status stays with `update_project_status`. |
+| `update_issue` | Edits an **existing** issue's core fields — `title`, `assignees`, `labels`, `milestone`, `body` — via one PATCH with the configured token. `labels`/`assignees` replace the whole set (`[]` clears). For Priority/Effort/Type use `set_issue_fields`; for Status use `update_project_status`. |
 | `delete_issue` | Closes an issue **and** deletes its branch. Destructive — needs `confirmed: true`. |
 | `delete_branch` | Deletes a branch **and** closes its issue. Destructive — needs `confirmed: true`. |
 
@@ -145,6 +146,8 @@ All optional; unset unless noted. Grouped by concern — the same groups appear 
 | `OKFFS_DEFAULT_LABELS` | — | Comma-separated labels merged with inferred ones. |
 | `OKFFS_DEFAULT_PRIORITY` / `OKFFS_DEFAULT_EFFORT` | — | Board Priority/Effort fallback when none is inferred or given. |
 | `OKFFS_INFER_PRIORITY` / `OKFFS_INFER_EFFORT` | `true` | Let Claude infer priority/effort from the task. |
+| `OKFFS_INFER_TYPE` | `true` | Let Claude infer the native GitHub Issue Type (Task/Bug/Feature/…) from the task. Org-level; skipped cleanly on user repos. |
+| `OKFFS_DEFAULT_TYPE` | — | Native Issue Type fallback when none is inferred or given (e.g. `Task`). |
 | `OKFFS_PROMPT_METADATA` | `true` | Set `false` to hide the assignees/labels tip. |
 
 **PR review**
