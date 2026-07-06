@@ -8,12 +8,14 @@ import {
   renderBoardLines,
   type BoardAddResult,
   type InitialStatusResult,
+  type BoardFieldOutcome,
 } from "../board.js";
+import { applyIssueType } from "../issue_types.js";
 
 export const name = "create_issues_from_list";
 
 export const description =
-  "Create multiple GitHub issues and matching branches from a list of tasks. Before calling this tool, infer appropriate labels for each task from its title and description using GitHub's default labels: bug, documentation, duplicate, enhancement, good first issue, help wanted, invalid, question, wontfix. Pass inferred labels per task in the labels field unless the user has specified their own. When the Project board is enabled (OKFFS_PROJECT_AUTO_ADD=true), each issue is added to the board like create_issue does — infer a per-task priority/effort where you can, falling back to OKFFS_DEFAULT_PRIORITY/EFFORT. Confirms before creating.";
+  "Create multiple GitHub issues and matching branches from a list of tasks. Before calling this tool, infer appropriate labels for each task from its title and description using GitHub's default labels: bug, documentation, duplicate, enhancement, good first issue, help wanted, invalid, question, wontfix. Pass inferred labels per task in the labels field unless the user has specified their own. When the Project board is enabled (OKFFS_PROJECT_AUTO_ADD=true), each issue is added to the board like create_issue does — infer a per-task priority/effort where you can, falling back to OKFFS_DEFAULT_PRIORITY/EFFORT. Also infer a per-task native GitHub Issue Type (Task/Bug/Feature/…) where the org defines them, falling back to OKFFS_DEFAULT_TYPE. Confirms before creating.";
 
 const taskSchema = z.object({
   title: z.string().describe("Issue title"),
@@ -26,6 +28,9 @@ const taskSchema = z.object({
   ),
   effort: z.string().optional().describe(
     "Optional Project board Effort (e.g. High, Medium, Low). Only applied when OKFFS_PROJECT_AUTO_ADD=true; falls back to OKFFS_DEFAULT_EFFORT when omitted."
+  ),
+  type: z.string().optional().describe(
+    "Optional native GitHub Issue Type (e.g. Task, Bug, Feature, Epic, Story) — matched against the org's enabled Issue Types. Skipped cleanly when unavailable; falls back to OKFFS_DEFAULT_TYPE when omitted."
   ),
 });
 
@@ -58,12 +63,19 @@ export async function handler(input: z.infer<typeof inputSchema>) {
     ];
     const resolvedPriority = task.priority ?? config.defaultPriority;
     const resolvedEffort = task.effort ?? config.defaultEffort;
+    const resolvedType = task.type ?? config.defaultType;
 
     const issue = await createIssue(task.title, task.description, resolvedAssignees, resolvedLabels, task.milestone);
     const branchName = buildBranchName(issue.number, task.title);
     await createBranch(branchName, ref.object.sha);
     const updatedBody = `${task.description}\n\n**Branch:** \`${branchName}\``;
     await updateIssueBody(issue.number, updatedBody);
+
+    // Native Issue Type — non-fatal per task, surfaced in the entry below.
+    let typeOutcome: BoardFieldOutcome | null = null;
+    if (resolvedType) {
+      typeOutcome = await applyIssueType(issue.number, resolvedType);
+    }
 
     // Board placement, mirroring create_issue. Non-fatal per task and surfaced in
     // the response — never silent (#144, #146). No draft PR here, so the initial
@@ -99,6 +111,13 @@ export async function handler(input: z.infer<typeof inputSchema>) {
         indent: "  ",
       })
     );
+    if (typeOutcome) {
+      entryLines.push(
+        "applied" in typeOutcome
+          ? `  Type: ${typeOutcome.applied}`
+          : `  ⚠ Type "${resolvedType}" not set — ${typeOutcome.skipped}`
+      );
+    }
     results.push(entryLines.join("\n"));
   }
 

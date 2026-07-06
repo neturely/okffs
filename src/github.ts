@@ -160,6 +160,21 @@ export async function updateIssueBody(issueNumber: number, body: string): Promis
   });
 }
 
+// Mutate core issue fields on an existing issue (title/body/assignees/labels/
+// milestone) via a single REST PATCH. Only the keys present in `fields` are sent
+// — undefined keys are dropped by JSON.stringify, so omitted fields are left
+// unchanged. Note GitHub's PATCH REPLACES the whole labels/assignees set (it does
+// not merge), and milestone: null clears it. Returns the updated issue.
+export async function updateIssue(
+  issueNumber: number,
+  fields: { title?: string; body?: string; assignees?: string[]; labels?: string[]; milestone?: number | null }
+): Promise<{ number: number; html_url: string; title: string }> {
+  return request(`/repos/${owner}/${repo}/issues/${issueNumber}`, {
+    method: "PATCH",
+    body: JSON.stringify(fields),
+  });
+}
+
 export async function getDefaultBranch(): Promise<string> {
   if (config.baseBranch) return config.baseBranch;
   const data = await request<{ default_branch: string }>(`/repos/${owner}/${repo}`);
@@ -189,17 +204,36 @@ export interface IssueSummary {
   title: string;
   html_url: string;
   body: string | null;
+  type: string | null; // native GitHub Issue Type name (e.g. Task/Bug/Feature), if set
 }
 
 export async function listIssues(): Promise<IssueSummary[]> {
   // The issues endpoint also returns pull requests; filter them out via the
-  // pull_request field that only PRs carry.
-  const raw = await request<Array<IssueSummary & { pull_request?: unknown }>>(
+  // pull_request field that only PRs carry. Issue objects carry `type: {name}`
+  // (org-level native Issue Type) when the org defines types and one is set.
+  const raw = await request<Array<Omit<IssueSummary, "type"> & { pull_request?: unknown; type?: { name: string } | null }>>(
     `/repos/${owner}/${repo}/issues?state=open&per_page=100`
   );
   return raw
     .filter((i) => !i.pull_request)
-    .map(({ number, title, html_url, body }) => ({ number, title, html_url, body }));
+    .map(({ number, title, html_url, body, type }) => ({ number, title, html_url, body, type: type?.name ?? null }));
+}
+
+// Read the org's native Issue Types (Task/Bug/Feature/…). Org-level: 404s on a
+// user-owned repo and needs an org-capable token. Callers treat any failure as
+// "types unavailable" and skip cleanly (mirrors the Projects / org Issue Field
+// gating). Returns the raw list; issue_types.ts memoizes + filters to enabled.
+export async function getOrgIssueTypes(): Promise<Array<{ name: string; is_enabled: boolean }>> {
+  return request(`/orgs/${owner}/issue-types`);
+}
+
+// Set a native Issue Type on an issue by name (REST PATCH `type`). Passing null
+// clears it. Verified against the org's enabled types before calling.
+export async function setIssueType(issueNumber: number, type: string | null): Promise<void> {
+  await request(`/repos/${owner}/${repo}/issues/${issueNumber}`, {
+    method: "PATCH",
+    body: JSON.stringify({ type }),
+  });
 }
 
 export interface PullRequestSummary {
@@ -317,6 +351,56 @@ export async function getOpenPullRequestForBranch(
     `/repos/${owner}/${repo}/pulls?head=${owner}:${branch}${baseParam}&state=open&per_page=1`
   );
   return prs.length > 0 ? prs[0] : null;
+}
+
+// Full PR detail — includes the mergeability signals the autonomous-merge gate
+// needs (`mergeable`, `mergeable_state`) that the list endpoint omits.
+export interface PullRequestDetail {
+  number: number;
+  state: string; // "open" | "closed"
+  draft: boolean;
+  merged: boolean;
+  mergeable: boolean | null; // null while GitHub is still computing it
+  mergeable_state: string; // clean | unstable | dirty | blocked | behind | draft | has_hooks | unknown
+  html_url: string;
+  head: { sha: string; ref: string };
+  base: { ref: string };
+}
+
+export async function getPullRequest(prNumber: number): Promise<PullRequestDetail> {
+  return request(`/repos/${owner}/${repo}/pulls/${prNumber}`);
+}
+
+// Legacy combined commit status (the older Statuses API — e.g. many CI providers).
+export interface CombinedStatus {
+  state: "success" | "failure" | "pending" | "error";
+  statuses: Array<{ state: string; context: string }>;
+}
+export async function getCombinedStatus(sha: string): Promise<CombinedStatus> {
+  return request(`/repos/${owner}/${repo}/commits/${sha}/status`);
+}
+
+// Check runs (the newer Checks API — e.g. GitHub Actions). Independent of the
+// Statuses API above; a commit can have either or both, so the merge gate checks
+// both to decide "are the checks green".
+export interface CheckRunsResult {
+  total_count: number;
+  check_runs: Array<{ name: string; status: string; conclusion: string | null }>;
+}
+export async function getCheckRuns(sha: string): Promise<CheckRunsResult> {
+  return request(`/repos/${owner}/${repo}/commits/${sha}/check-runs?per_page=100`);
+}
+
+// Merge a PR with an explicit method (squash | merge | rebase). Throws on any
+// GitHub refusal (405 not mergeable, 409 head moved, etc.) so the caller surfaces it.
+export async function mergePullRequest(
+  prNumber: number,
+  mergeMethod: string
+): Promise<{ sha: string; merged: boolean; message: string }> {
+  return request(`/repos/${owner}/${repo}/pulls/${prNumber}/merge`, {
+    method: "PUT",
+    body: JSON.stringify({ merge_method: mergeMethod }),
+  });
 }
 
 export async function updatePullRequest(

@@ -1,3 +1,23 @@
+// GitHub's three PR merge methods. okffs records the method per branch tier
+// (base vs protected) so a merge — whoever performs it — uses the convention the
+// repo settled on (e.g. squash into develop, merge-commit into main). #209.
+export type MergeMethod = "squash" | "merge" | "rebase";
+const MERGE_METHODS: readonly MergeMethod[] = ["squash", "merge", "rebase"];
+
+// Parse a merge-method env var, validating against GitHub's three methods. An
+// unset value takes the default silently; an INVALID value warns [okffs] and
+// falls back to the default rather than failing startup.
+function parseMergeMethod(envVar: string, def: MergeMethod): MergeMethod {
+  const raw = process.env[envVar];
+  if (!raw) return def;
+  const value = raw.trim().toLowerCase();
+  if ((MERGE_METHODS as readonly string[]).includes(value)) return value as MergeMethod;
+  console.warn(
+    `[okffs] ${envVar}="${raw}" is not a valid merge method (expected one of ${MERGE_METHODS.join(", ")}) — falling back to "${def}".`
+  );
+  return def;
+}
+
 export const config = {
   promptForMetadata: process.env.OKFFS_PROMPT_METADATA !== "false",
   defaultAssignees: process.env.OKFFS_DEFAULT_ASSIGNEES
@@ -18,6 +38,21 @@ export const config = {
   // OKFFS_IDENTIFIER — optional project-scoped prefix inserted into branch names:
   // {issue-number}-{identifier}-{slug} instead of {issue-number}-{slug}
   identifier: process.env.OKFFS_IDENTIFIER || null,
+  // OKFFS_BASE_MERGE_METHOD / OKFFS_PROTECTED_MERGE_METHOD — the PR merge method
+  // for each branch tier: base (e.g. develop) defaults to `squash`, protected
+  // (e.g. main) defaults to `merge` (merge commit). Config only — it records the
+  // convention so a merge uses the right method; it does NOT grant okffs any
+  // permission to merge (okffs never merges the protected branch autonomously).
+  // Invalid values warn [okffs] and fall back to the default. #209.
+  baseMergeMethod: parseMergeMethod("OKFFS_BASE_MERGE_METHOD", "squash"),
+  protectedMergeMethod: parseMergeMethod("OKFFS_PROTECTED_MERGE_METHOD", "merge"),
+  // OKFFS_AUTO_MERGE_BASE=true — opt-in to let merge_pull_request autonomously
+  // merge a green, threads-resolved issue PR into the BASE branch (e.g. develop),
+  // using OKFFS_BASE_MERGE_METHOD. Default false. Heavily gated (see the tool):
+  // never merges OKFFS_PROTECTED_BRANCH, refuses when that var is unset, and
+  // independently verifies checks + mergeability rather than trusting the ruleset.
+  // The protected branch stays a manual, user-driven merge no matter what. #211.
+  autoMergeBase: process.env.OKFFS_AUTO_MERGE_BASE === "true",
   updateDocs: process.env.OKFFS_UPDATE_DOCS === "true",
   // OKFFS_AUTO_PR=true — creates a draft PR when a new issue branch is created
   autoPR: process.env.OKFFS_AUTO_PR === "true",
@@ -65,6 +100,14 @@ export const config = {
   // explicit param or the default is used then).
   inferPriority: process.env.OKFFS_INFER_PRIORITY !== "false",
   inferEffort: process.env.OKFFS_INFER_EFFORT !== "false",
+  // OKFFS_INFER_TYPE / OKFFS_DEFAULT_TYPE — native GitHub Issue Type (Task/Bug/
+  // Feature/Epic/Story) handling, parallel to priority/effort. When inference is
+  // on (the default), create_issue's description tells Claude to pick the fitting
+  // org-defined type from the task; OKFFS_DEFAULT_TYPE fills in when it can't
+  // judge (or when inference is off). Both no-op cleanly when the org defines no
+  // Issue Types / the token can't read them (org-level feature — see #201, #199).
+  inferType: process.env.OKFFS_INFER_TYPE !== "false",
+  defaultType: process.env.OKFFS_DEFAULT_TYPE || null,
   // OKFFS_PROJECT_INITIAL_STATUS — Status column a freshly auto-added issue
   // should land in (e.g. "Backlog"). Set after the draft PR is created so it
   // wins over GitHub's "PR linked to issue" workflow, which would otherwise flip
