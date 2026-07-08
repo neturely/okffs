@@ -17,6 +17,7 @@ dist/
 
 # Personal/local notes (not for the public repo)
 instructions
+INSTRUCTIONS.md
 
 # Claude Code — ignore local settings but keep agents
 .claude/settings.json

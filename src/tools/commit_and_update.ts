@@ -11,6 +11,51 @@ export const inputSchema = z.object({
   hint: z.string().optional().describe("Short description of what was done — used to build the commit message and issue comment"),
 });
 
+const SUBJECT_MAX = 72;
+
+/**
+ * Split a free-text hint into a git commit subject + optional body.
+ *
+ * - Subject: the first **non-blank** line, truncated to ~72 chars at a **word
+ *   boundary** (never mid-word) — a single unbreakable word longer than the
+ *   limit is the only case that gets a hard cut. Leading blank lines are skipped
+ *   so a hint like "\nAdd X" doesn't produce an empty subject (#236).
+ * - Body: any lines after the subject line, plus whatever overflowed past the
+ *   subject, joined as blank-line-separated paragraphs. `undefined` when the
+ *   hint fits entirely in the subject, so a short single-line hint behaves
+ *   exactly as before (subject only). (#228)
+ *
+ * A whitespace-only hint has no usable subject line and returns `{ subject: "" }`
+ * — the handler guards against that by treating a blank hint as absent (#236).
+ */
+export function splitCommitMessage(hint: string): { subject: string; body?: string } {
+  const lines = hint.split("\n");
+  // Take the subject from the first non-blank line, not lines[0], so leading
+  // blank lines don't yield an empty subject.
+  const firstIdx = lines.findIndex((l) => l.trim() !== "");
+  if (firstIdx === -1) return { subject: "" };
+  const firstLine = lines[firstIdx].trim();
+  const rest = lines.slice(firstIdx + 1).join("\n").trim();
+
+  let subject = firstLine;
+  let overflow = "";
+  if (firstLine.length > SUBJECT_MAX) {
+    const slice = firstLine.slice(0, SUBJECT_MAX);
+    const lastSpace = slice.lastIndexOf(" ");
+    if (lastSpace > 0) {
+      subject = firstLine.slice(0, lastSpace).trimEnd();
+      overflow = firstLine.slice(lastSpace + 1).trim();
+    } else {
+      // A single word longer than the limit — no boundary to break on.
+      subject = slice;
+      overflow = firstLine.slice(SUBJECT_MAX).trim();
+    }
+  }
+
+  const body = [overflow, rest].filter(Boolean).join("\n\n");
+  return body ? { subject, body } : { subject };
+}
+
 export async function handler(input: z.infer<typeof inputSchema>) {
   const issue = await getIssue(input.issue_number);
   const branchName = extractBranchFromBody(issue.body);
@@ -23,13 +68,17 @@ export async function handler(input: z.infer<typeof inputSchema>) {
     changedFiles = [];
   }
 
-  const hintText = input.hint ?? "";
+  // Trim so a whitespace-only hint (e.g. "   ") counts as absent — otherwise it
+  // is truthy and yields an empty commit subject (#236).
+  const hintText = (input.hint ?? "").trim();
   const filesText = changedFiles.length > 0 ? changedFiles.join(", ") : "various files";
 
-  // Build the commit message from the hint when provided, else the file list.
-  const commitMessage = hintText
-    ? hintText.slice(0, 72)
-    : `chore: update ${filesText.slice(0, 60)}`;
+  // Build the commit subject (and optional body) from the hint when provided,
+  // else the file list. A long/multi-line hint is split into a word-boundary
+  // subject plus a body rather than blindly sliced mid-word at 72 chars (#228).
+  const { subject: commitMessage, body: commitBody } = hintText
+    ? splitCommitMessage(hintText)
+    : { subject: `chore: update ${filesText.slice(0, 60)}`, body: undefined };
 
   // Stage, commit, and push on the issue branch. Arguments are passed as an
   // array (no shell), so the hint and branch name can't be interpreted as
@@ -41,7 +90,13 @@ export async function handler(input: z.infer<typeof inputSchema>) {
       git(["checkout", branchName]);
     }
     git(["add", "-A"]);
-    git(["commit", "-m", commitMessage]);
+    const commitArgs = ["commit", "-m", commitMessage];
+    if (commitBody) {
+      // A second -m yields a native subject + body (blank-line separated),
+      // still passing every arg as an array (no shell).
+      commitArgs.push("-m", commitBody);
+    }
+    git(commitArgs);
     if (branchName) {
       git(["push", "origin", branchName]);
     }

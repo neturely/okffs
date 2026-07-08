@@ -5,6 +5,15 @@ See [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-07-08
+### Added
+- Add an issue-less "fix PR into base branch" tool (open + merge into develop, the mirror of promote_branch) ([#226](https://github.com/neturely/okffs/issues/226))
+- merge_pull_request: accept pr_number for issue-less fix PRs into the base branch (merge-only mode) ([#224](https://github.com/neturely/okffs/issues/224))
+### Changed
+- Harden reply_to_review_comment against reply-without-resolve footgun ([#230](https://github.com/neturely/okffs/issues/230))
+- commit_and_update: split hint into subject + body instead of a blind 72-char slice ([#228](https://github.com/neturely/okffs/issues/228))
+- Document fix_into_base + merge_pull_request pr_number mode; remove leaked INSTRUCTIONS.md and gitignore it ([#232](https://github.com/neturely/okffs/issues/232))
+
 ## [0.7.0] - 2026-07-06
 ### Added
 - Address #217 review: allow clearing milestone in update_issue + accurate auth wording ([#218](https://github.com/neturely/okffs/issues/218))
@@ -135,7 +144,8 @@ See [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `create_pull_request` commits the updated CHANGELOG onto the branch and pushes the branch before opening the PR, with non-blocking error handling ([#38](https://github.com/2b9sa2owa/okffs/issues/38)).
 - All git operations now run via `execFileSync` with argument arrays (no shell), removing command-injection risk from branch names and commit hints; tools also checkout the target branch before committing/pushing and restore the original branch afterward.
 
-[Unreleased]: https://github.com/neturely/okffs/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/neturely/okffs/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/neturely/okffs/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/neturely/okffs/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/neturely/okffs/compare/v0.5.2...v0.6.0
 [0.5.2]: https://github.com/neturely/okffs/compare/v0.5.1...v0.5.2
