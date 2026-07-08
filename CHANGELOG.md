@@ -6,13 +6,13 @@ See [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ## [0.8.0] - 2026-07-08
-### Fixed
-- Document fix_into_base + merge_pull_request pr_number mode; remove leaked INSTRUCTIONS.md and gitignore it ([#232](https://github.com/neturely/okffs/issues/232))
+### Added
 - Add an issue-less "fix PR into base branch" tool (open + merge into develop, the mirror of promote_branch) ([#226](https://github.com/neturely/okffs/issues/226))
 - merge_pull_request: accept pr_number for issue-less fix PRs into the base branch (merge-only mode) ([#224](https://github.com/neturely/okffs/issues/224))
 ### Changed
 - Harden reply_to_review_comment against reply-without-resolve footgun ([#230](https://github.com/neturely/okffs/issues/230))
 - commit_and_update: split hint into subject + body instead of a blind 72-char slice ([#228](https://github.com/neturely/okffs/issues/228))
+- Document fix_into_base + merge_pull_request pr_number mode; remove leaked INSTRUCTIONS.md and gitignore it ([#232](https://github.com/neturely/okffs/issues/232))
 
 ## [0.7.0] - 2026-07-06
 ### Added
