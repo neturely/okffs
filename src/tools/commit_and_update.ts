@@ -16,18 +16,26 @@ const SUBJECT_MAX = 72;
 /**
  * Split a free-text hint into a git commit subject + optional body.
  *
- * - Subject: the first line, truncated to ~72 chars at a **word boundary**
- *   (never mid-word) — a single unbreakable word longer than the limit is the
- *   only case that gets a hard cut.
- * - Body: any remaining lines, plus whatever overflowed past the subject on the
- *   first line, joined as blank-line-separated paragraphs. `undefined` when the
+ * - Subject: the first **non-blank** line, truncated to ~72 chars at a **word
+ *   boundary** (never mid-word) — a single unbreakable word longer than the
+ *   limit is the only case that gets a hard cut. Leading blank lines are skipped
+ *   so a hint like "\nAdd X" doesn't produce an empty subject (#236).
+ * - Body: any lines after the subject line, plus whatever overflowed past the
+ *   subject, joined as blank-line-separated paragraphs. `undefined` when the
  *   hint fits entirely in the subject, so a short single-line hint behaves
  *   exactly as before (subject only). (#228)
+ *
+ * A whitespace-only hint has no usable subject line and returns `{ subject: "" }`
+ * — the handler guards against that by treating a blank hint as absent (#236).
  */
 export function splitCommitMessage(hint: string): { subject: string; body?: string } {
   const lines = hint.split("\n");
-  const firstLine = lines[0].trim();
-  const rest = lines.slice(1).join("\n").trim();
+  // Take the subject from the first non-blank line, not lines[0], so leading
+  // blank lines don't yield an empty subject.
+  const firstIdx = lines.findIndex((l) => l.trim() !== "");
+  if (firstIdx === -1) return { subject: "" };
+  const firstLine = lines[firstIdx].trim();
+  const rest = lines.slice(firstIdx + 1).join("\n").trim();
 
   let subject = firstLine;
   let overflow = "";
@@ -60,7 +68,9 @@ export async function handler(input: z.infer<typeof inputSchema>) {
     changedFiles = [];
   }
 
-  const hintText = input.hint ?? "";
+  // Trim so a whitespace-only hint (e.g. "   ") counts as absent — otherwise it
+  // is truthy and yields an empty commit subject (#236).
+  const hintText = (input.hint ?? "").trim();
   const filesText = changedFiles.length > 0 ? changedFiles.join(", ") : "various files";
 
   // Build the commit subject (and optional body) from the hint when provided,
