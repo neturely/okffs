@@ -31,8 +31,22 @@ export async function runSetup(argv: string[]): Promise<number> {
   const parsed = parseEnv(envPath);
 
   p.intro("okffs setup");
+
+  p.note(
+    [
+      "This wizard configures okffs by writing your settings to a `.env` file.",
+      "",
+      "• Nothing is written until you confirm at the very end.",
+      "• okffs only manages its own marked block — your own variables and",
+      "  comments are preserved untouched.",
+      "• Prefer to do it by hand? Press Ctrl-C to exit any time and copy the",
+      "  variables you want from `.env.example` instead.",
+    ].join("\n"),
+    "Before we start"
+  );
+
   if (parsed.exists) {
-    p.log.info(`Found an existing .env at ${envPath}`);
+    p.log.info(`Found an existing .env at ${envPath} — it will be updated in place.`);
   } else {
     p.log.info(`No .env yet — this will create one at ${envPath}`);
   }
@@ -60,9 +74,13 @@ export async function runSetup(argv: string[]): Promise<number> {
     await walkSections(collected, parsed, mode);
   }
 
-  // Confirm before overwriting an existing file (a fresh, regenerated one).
+  // Confirm before writing to an existing file. Only okffs's own marked block is
+  // rewritten; the user's other variables and comments are preserved verbatim.
   if (parsed.exists) {
-    const go = await p.confirm({ message: "Write a freshly regenerated .env now? (unknown custom vars are preserved)", initialValue: true });
+    const go = await p.confirm({
+      message: "Update .env now? Only okffs's own marked block is rewritten — your other variables and comments are kept as-is.",
+      initialValue: true,
+    });
     if (p.isCancel(go) || !go) {
       p.cancel("No changes written.");
       return 1;
@@ -222,7 +240,7 @@ async function askVar(spec: VarSpec, current: Entry | undefined): Promise<Entry 
 
 async function finish(collected: Collected, parsed: ReturnType<typeof parseEnv>, envPath: string, rewrote: boolean): Promise<void> {
   if (rewrote) {
-    const contents = serializeEnv(collected, parsed.extra);
+    const contents = serializeEnv(collected, parsed.preamble, parsed.postamble);
     writeEnv(envPath, contents);
     p.log.success(`Wrote ${envPath}`);
   }

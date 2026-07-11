@@ -1,14 +1,26 @@
 // Reading and (re)writing .env for the setup wizard.
 //
-// Write behaviour is a clean regenerate: we emit a fresh .env from the manifest
-// (section headers in a fixed order) rather than patching the original file in
-// place. That keeps the file tidy and self-documenting; the cost is that a
-// user's hand-added comments/ordering are not preserved — but unknown KEY=value
-// lines ARE carried over into a trailing block so no actual config is lost.
+// okffs owns ONLY a marker-delimited block. Everything OUTSIDE the block — the
+// user's own variables, their comments, their layout — is preserved verbatim
+// across every run. Inside the block okffs regenerates its own variables in a
+// fixed section order.
+//
+//   <user content, preserved byte-for-byte>
+//   # okffs:env:start  ── managed; regenerated each run ──
+//   OKFFS_… = …
+//   # okffs:env:end
+//   <more user content, preserved byte-for-byte>
+//
+// Recognized okffs variables found OUTSIDE the block (e.g. in a hand-written
+// .env being adopted for the first time, or one copied from .env.example) are
+// MIGRATED into the block: their value is read and re-emitted inside the block,
+// and the stray line is removed so there is never a duplicate assignment. Their
+// value is never lost — only relocated to the block okffs manages. Any comment
+// that happened to sit directly above such a line stays where it was.
 //
 // The parser also powers sync mode: a variable counts as "known" whether it is
 // set (`KEY=value`) or written as a declined placeholder (`# KEY=`), which is
-// exactly how sync distinguishes "asked and declined" from "new, never asked".
+// how sync distinguishes "asked and declined" from "new, never asked".
 
 import { readFileSync, writeFileSync } from "node:fs";
 import { SECTIONS, allKeys } from "./manifest.js";
@@ -16,15 +28,20 @@ import { SECTIONS, allKeys } from "./manifest.js";
 const KEY_RE = /^([A-Z][A-Z0-9_]*)=(.*)$/;
 const COMMENTED_KEY_RE = /^#\s*([A-Z][A-Z0-9_]*)\s*=/;
 
+const START_MARKER = "okffs:env:start";
+const END_MARKER = "okffs:env:end";
+
 export interface ParsedEnv {
-  /** Live key→value pairs (uncommented assignments). */
-  values: Record<string, string>;
-  /** Every key that appears, set OR as a `# KEY=` placeholder. */
-  known: Set<string>;
-  /** `KEY=value` lines for keys the manifest doesn't know about — preserved on rewrite. */
-  extra: Array<{ key: string; value: string }>;
   /** Whether the file existed at all. */
   exists: boolean;
+  /** User content before okffs's managed block — preserved verbatim (okffs var lines migrated out). */
+  preamble: string;
+  /** User content after okffs's managed block — preserved verbatim (okffs var lines migrated out). */
+  postamble: string;
+  /** okffs var values found anywhere (managed block or migrated from user content), for seeding. */
+  values: Record<string, string>;
+  /** Every okffs key that appears, set OR as a `# KEY=` placeholder, anywhere in the file. */
+  known: Set<string>;
 }
 
 export function parseEnv(path: string): ParsedEnv {
@@ -32,30 +49,71 @@ export function parseEnv(path: string): ParsedEnv {
   try {
     raw = readFileSync(path, "utf8");
   } catch {
-    return { values: {}, known: new Set(), extra: [], exists: false };
+    return { exists: false, preamble: "", postamble: "", values: {}, known: new Set() };
+  }
+
+  const manifestKeys = new Set(allKeys());
+  const lines = raw.split("\n");
+
+  // Locate okffs's managed block by its markers.
+  const startIdx = lines.findIndex((l) => l.includes(START_MARKER));
+  const endIdx = lines.findIndex((l) => l.includes(END_MARKER));
+
+  let preLines: string[];
+  let managedLines: string[];
+  let postLines: string[];
+  if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
+    preLines = lines.slice(0, startIdx);
+    managedLines = lines.slice(startIdx + 1, endIdx);
+    postLines = lines.slice(endIdx + 1);
+  } else {
+    // No markers: the whole file is user content. okffs vars in it get migrated.
+    preLines = lines;
+    managedLines = [];
+    postLines = [];
   }
 
   const values: Record<string, string> = {};
   const known = new Set<string>();
-  const manifestKeys = new Set(allKeys());
-  const extra: Array<{ key: string; value: string }> = [];
 
-  for (const line of raw.split("\n")) {
-    const commented = line.match(COMMENTED_KEY_RE);
-    if (commented) {
-      known.add(commented[1]);
-      continue;
-    }
-    const m = line.match(KEY_RE);
-    if (!m) continue;
-    const [, key, rawValue] = m;
-    const value = unquote(rawValue.trim());
-    values[key] = value;
-    known.add(key);
-    if (!manifestKeys.has(key)) extra.push({ key, value });
+  // The managed block is discarded and regenerated; just harvest its values.
+  for (const line of managedLines) harvest(line, manifestKeys, values, known);
+
+  // From user content, migrate okffs var lines out (harvest + drop) and keep
+  // everything else — comments, blanks, custom vars, commented custom vars —
+  // byte-for-byte.
+  const preamble = migrate(preLines, manifestKeys, values, known);
+  const postamble = migrate(postLines, manifestKeys, values, known);
+
+  return { exists: true, preamble, postamble, values, known };
+}
+
+// Record an okffs var line's key (+ value if set) without keeping the line.
+function harvest(line: string, manifestKeys: Set<string>, values: Record<string, string>, known: Set<string>): boolean {
+  const cm = line.match(COMMENTED_KEY_RE);
+  if (cm && manifestKeys.has(cm[1])) {
+    known.add(cm[1]);
+    return true;
   }
+  const m = line.match(KEY_RE);
+  if (m && manifestKeys.has(m[1])) {
+    known.add(m[1]);
+    const v = unquote(m[2].trim());
+    if (v !== "" && values[m[1]] === undefined) values[m[1]] = v; // first occurrence wins (dotenv semantics)
+    return true;
+  }
+  return false;
+}
 
-  return { values, known, extra, exists: true };
+// Harvest okffs var lines out of `lines` and return the remaining lines
+// (verbatim) joined back together.
+function migrate(lines: string[], manifestKeys: Set<string>, values: Record<string, string>, known: Set<string>): string {
+  const kept: string[] = [];
+  for (const line of lines) {
+    if (harvest(line, manifestKeys, values, known)) continue; // okffs var — migrated into the block
+    kept.push(line); // user content — preserved
+  }
+  return kept.join("\n");
 }
 
 function unquote(v: string): string {
@@ -73,12 +131,11 @@ function quoteIfNeeded(v: string): string {
   return v;
 }
 
-// Three states a manifest var can be in when writing .env:
-//   set      → `KEY=value`         (has a real value)
-//   declined → `# KEY=`            (explicitly skipped; marks the key "known" so
-//                                    sync mode won't re-ask it)
-//   (absent) → omitted entirely    (never asked, e.g. a Quick-setup var; a later
-//                                    sync run WILL offer it because it's unknown)
+// Three states a manifest var can be in when writing the managed block:
+//   set      → `KEY=value`
+//   declined → `# KEY=`          (explicitly skipped; marks the key "known")
+//   (absent) → omitted entirely  (never asked, e.g. a Quick-setup var; a later
+//                                  sync run WILL offer it because it's unknown)
 export type EntryState = "set" | "declined";
 export interface Entry {
   state: EntryState;
@@ -88,19 +145,23 @@ export interface Entry {
 /** Keys absent from the map are "never asked" and omitted from the output. */
 export type Collected = Record<string, Entry>;
 
-const RULE = "═".repeat(78);
+// The block boundary is a SINGLE decorative line that CONTAINS the marker, so a
+// re-parse slices exactly at it — no stray rule line can leak into the preserved
+// user content and make the file grow on each run (regen must be idempotent).
+const START_LINE = `# ${"═".repeat(22)} ${START_MARKER} ${"═".repeat(22)}`;
+const END_LINE = `# ${"═".repeat(23)} ${END_MARKER} ${"═".repeat(24)}`;
 
 /**
- * Serialize a fresh .env from the manifest and the collected values. Vars are
- * emitted in section order; a section with no collected vars is skipped whole so
- * a Quick setup doesn't leave a wall of empty headers. Unknown keys from the
- * previous file are kept in a trailing block.
+ * Assemble the full .env: the preserved user preamble, then okffs's managed
+ * block (regenerated from the manifest + collected values), then the preserved
+ * user postamble. Only the managed block is okffs's to rewrite.
  */
-export function serializeEnv(collected: Collected, extra: Array<{ key: string; value: string }>): string {
-  const out: string[] = [
-    "# okffs configuration — generated by `okffs setup`.",
-    "# .env is git-ignored and loaded automatically from the directory okffs runs in.",
-    "# Re-run `okffs setup` any time (e.g. after upgrading) to pick up new options.",
+export function serializeEnv(collected: Collected, preamble: string, postamble: string): string {
+  const block: string[] = [
+    START_LINE,
+    "# Managed by `okffs setup` — regenerated on every run; set these via",
+    "# `okffs setup`, not by hand. Your own variables and comments OUTSIDE this",
+    "# block are left untouched.",
     "",
   ];
 
@@ -108,25 +169,18 @@ export function serializeEnv(collected: Collected, extra: Array<{ key: string; v
     const keys = [...(section.gateKey ? [section.gateKey] : []), ...section.vars.map((v) => v.key)];
     if (!keys.some((k) => collected[k])) continue; // whole section unasked — skip it
 
-    out.push(`# ${RULE}`);
-    out.push(`# ${section.title}`);
-    out.push(`# ${RULE}`);
-    if (section.blurb) out.push(`# ${section.blurb}`);
-    out.push("");
-
-    for (const k of keys) emitVar(out, k, collected);
-    out.push("");
+    block.push(`# ${section.title}`);
+    if (section.blurb) block.push(`# ${section.blurb}`);
+    for (const k of keys) emitVar(block, k, collected);
+    block.push("");
   }
 
-  if (extra.length > 0) {
-    out.push(`# ${RULE}`);
-    out.push("# Other (preserved from your previous .env)");
-    out.push(`# ${RULE}`);
-    for (const { key, value } of extra) out.push(`${key}=${quoteIfNeeded(value)}`);
-    out.push("");
-  }
+  block.push(END_LINE);
 
-  return out.join("\n").replace(/\n{3,}/g, "\n\n").trimEnd() + "\n";
+  const pre = preamble.trim() ? preamble.replace(/\s+$/, "") + "\n\n" : "";
+  const post = postamble.trim() ? "\n" + postamble.replace(/^\s+/, "") : "";
+  const out = pre + block.join("\n") + post;
+  return out.replace(/\n{3,}/g, "\n\n").trimEnd() + "\n";
 }
 
 function emitVar(out: string[], key: string, collected: Collected): void {
