@@ -15,7 +15,15 @@ okffs is a [Model Context Protocol](https://modelcontextprotocol.io) server that
 
 ## Quick start
 
-Add a `.mcp.json` to your project root:
+**1. Run the setup wizard** from your project root:
+
+```bash
+npx @neturely/okffs setup
+```
+
+It walks you through auth, repo, and any optional features, writes a `.env`, then runs a quick GitHub sanity check. Re-run it any time (e.g. after upgrading okffs) — it only asks about options that are new since your last run. If you're happy relying on the [GitHub CLI](https://cli.github.com/) (`gh auth login`) and working inside the repo you want to manage, you can skip this step entirely — okffs works with **no config at all**.
+
+**2. Add a `.mcp.json`** to your project root:
 
 ```json
 {
@@ -28,7 +36,7 @@ Add a `.mcp.json` to your project root:
 }
 ```
 
-That's it — `npx` fetches okffs on first use, and Claude Code picks up the tools automatically. If you're signed in with the [GitHub CLI](https://cli.github.com/) (`gh auth login`) and working inside the repo you want to manage, **no other setup is needed**. To use a token or a different repo instead, see [Configuration](#configuration).
+That's it — `npx` fetches okffs on first use, and Claude Code picks up the tools automatically. To use a token or a different repo instead of the `gh`/auto-detect defaults, run `okffs setup` (above) or edit `.env` by hand — see [Configuration](#configuration).
 
 Now just ask Claude:
 
@@ -106,6 +114,8 @@ Once enabled, `list_issues` shows each issue's column, priority, and effort (ord
 **Token permission:** Projects v2 is GraphQL-only and needs a Projects-capable token — a fine-grained PAT with *Organization → Projects: Read and write*, or a classic PAT with the `project` scope. A single classic token with `repo` + `project` + `admin:org` covers everything, including org-level Issue Fields. Missing permission surfaces a clear `[okffs]` error naming what's needed.
 
 ## Configuration
+
+The quickest way to configure okffs is the wizard — `npx @neturely/okffs setup` — which writes and maintains the `.env` described below for you. The rest of this section documents what it (or you, by hand) can set.
 
 okffs resolves a **token** and a **target repository** with fallbacks, so most users need little config.
 
