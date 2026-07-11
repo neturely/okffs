@@ -1,2 +1,0 @@
-<!-- okffs:type=Added -->
-- `/okffs:setup` prompt + `configure` tool — configure okffs conversationally inside Claude Code (the in-chat counterpart to the `okffs setup` CLI). Claude interviews you from the same manifest the CLI uses and persists via `configure`, which writes only okffs's marked `.env` block and preserves your own variables/comments. On startup the server also stamps the configuring version and, when okffs has been upgraded and new options exist, nudges you (once) to run `/okffs:setup` ([#242](https://github.com/neturely/okffs/issues/242))
