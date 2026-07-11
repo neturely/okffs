@@ -260,7 +260,10 @@ async function finish(collected: Collected, parsed: ReturnType<typeof parseEnv>,
   if (failed) {
     p.log.warn("Some checks failed — okffs may not work until they're resolved. Your .env was still written.");
   }
-  p.outro("Next: add okffs to your project's .mcp.json (see the README Quick start), then start Claude Code.");
+  p.outro(
+    "Next: add okffs to your project's .mcp.json, then start Claude Code.\n" +
+      "  Quick start guide: https://github.com/neturely/okffs#quick-start"
+  );
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

@@ -61,7 +61,11 @@ export const SECTIONS: Section[] = [
       {
         key: "GITHUB_TOKEN",
         kind: "secret",
-        description: "GitHub PAT (fine-grained: Issues/Contents/Pull requests RW, Metadata R, Administration RW). Blank = use `gh auth token`.",
+        description:
+          "GitHub personal access token. Create a fine-grained one at " +
+          "https://github.com/settings/personal-access-tokens/new with these repo permissions: " +
+          "Issues, Contents, Pull requests (Read & write), Metadata (Read), Administration (Read & write). " +
+          "Leave blank to fall back to the GitHub CLI (`gh auth token`).",
         default: "",
       },
       {
@@ -118,9 +122,9 @@ export const SECTIONS: Section[] = [
       {
         key: "OKFFS_DEFAULT_LABELS",
         kind: "text",
-        description: "Comma-separated labels applied to every new issue (merged with inferred labels).",
+        description: "Comma-separated labels added to EVERY new issue, on top of any Claude picks from the task — e.g. okffs, backend, needs-triage.",
         default: "",
-        placeholder: "okffs",
+        placeholder: "okffs, backend",
       },
       {
         key: "OKFFS_DEFAULT_ASSIGNEES",
@@ -152,19 +156,19 @@ export const SECTIONS: Section[] = [
       {
         key: "OKFFS_INFER_PRIORITY",
         kind: "boolean",
-        description: "Let Claude infer a priority for each new issue from the task itself.",
+        description: "Have Claude read each new issue's title/description and decide its priority (Urgent/High/Medium/Low) for you, instead of you setting one. Falls back to the default above when it can't judge.",
         default: "true",
       },
       {
         key: "OKFFS_INFER_EFFORT",
         kind: "boolean",
-        description: "Let Claude infer an effort for each new issue from the task itself.",
+        description: "Have Claude read each new issue and decide its effort (High/Medium/Low) for you, instead of you setting one. Falls back to the default above.",
         default: "true",
       },
       {
         key: "OKFFS_INFER_TYPE",
         kind: "boolean",
-        description: "Let Claude infer the native Issue Type for each new issue from the task itself.",
+        description: "Have Claude read each new issue and decide its GitHub Issue Type (e.g. Bug/Feature/Task) for you, instead of you setting one. Falls back to the default above.",
         default: "true",
       },
     ],
@@ -228,12 +232,12 @@ export const SECTIONS: Section[] = [
     id: "review",
     title: "6. PR review",
     gated: true,
-    gatePrompt: "Configure PR review behaviour (thread resolution, guidance sync)?",
+    gatePrompt: "Configure how okffs handles PR review feedback — e.g. from GitHub Copilot code review or human reviewers?",
     vars: [
       {
         key: "OKFFS_RESOLVE_THREADS",
         kind: "boolean",
-        description: "Auto-resolve PR review threads once addressed (via resolve_review_thread).",
+        description: "After Claude fixes a PR's review comments, automatically mark those review threads resolved — e.g. threads left by GitHub Copilot code review or a human reviewer. Off = you resolve them yourself.",
         default: "false",
       },
       {
@@ -318,7 +322,7 @@ export const SECTIONS: Section[] = [
       {
         key: "OKFFS_PROMPT_METADATA",
         kind: "boolean",
-        description: "Show the assignees/labels metadata tip after issue creation.",
+        description: "After creating an issue, print a one-line reminder that you can also set assignees, labels, priority, etc. Turn off to silence that tip.",
         default: "true",
       },
     ],
