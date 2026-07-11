@@ -74,6 +74,7 @@ Claude infers labels (`bug`, `enhancement`, …) from the title and description 
 | `update_project_status` | Moves an issue between board columns (`Backlog`, `Ready`, `In Progress`, `Review`). Needs `OKFFS_PROJECT_ENABLED`. |
 | `set_issue_fields` | Sets board Priority/Effort **and/or the native Issue Type** on an **existing** issue. Priority/Effort handle project-native and org-level Issue Fields (needs `OKFFS_PROJECT_ENABLED`); `type` is org-native and works independently. `create_issue` only sets these at creation; use this afterwards. Status stays with `update_project_status`. |
 | `update_issue` | Edits an **existing** issue's core fields — `title`, `assignees`, `labels`, `milestone`, `body` — via one PATCH with the configured token. `labels`/`assignees` replace the whole set (`[]` clears). For Priority/Effort/Type use `set_issue_fields`; for Status use `update_project_status`. |
+| `configure` | Writes okffs config to `.env` — the backend for the `/okffs:setup` prompt. Reuses the `okffs setup` wizard's manifest/serializer: updates only okffs's marked block, preserving your own variables and comments. Usually driven by `/okffs:setup`, not called directly. |
 | `delete_issue` | Closes an issue **and** deletes its branch. Destructive — needs `confirmed: true`. |
 | `delete_branch` | Deletes a branch **and** closes its issue. Destructive — needs `confirmed: true`. |
 
