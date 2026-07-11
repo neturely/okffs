@@ -42,14 +42,20 @@ export interface ParsedEnv {
   values: Record<string, string>;
   /** Every okffs key that appears, set OR as a `# KEY=` placeholder, anywhere in the file. */
   known: Set<string>;
+  /** The okffs version stamped into the managed block last time it was written, if any. */
+  configuredVersion: string | null;
 }
+
+// A version stamp okffs writes into the managed block so a later run can tell
+// which okffs version last configured this .env (drives the upgrade nudge).
+const VERSION_STAMP_RE = /okffs:configured-version=(\S+)/;
 
 export function parseEnv(path: string): ParsedEnv {
   let raw: string;
   try {
     raw = readFileSync(path, "utf8");
   } catch {
-    return { exists: false, preamble: "", postamble: "", values: {}, known: new Set() };
+    return { exists: false, preamble: "", postamble: "", values: {}, known: new Set(), configuredVersion: null };
   }
 
   const manifestKeys = new Set(allKeys());
@@ -76,8 +82,14 @@ export function parseEnv(path: string): ParsedEnv {
   const values: Record<string, string> = {};
   const known = new Set<string>();
 
-  // The managed block is discarded and regenerated; just harvest its values.
-  for (const line of managedLines) harvest(line, manifestKeys, values, known);
+  // The managed block is discarded and regenerated; just harvest its values and
+  // the version stamp.
+  let configuredVersion: string | null = null;
+  for (const line of managedLines) {
+    const vm = line.match(VERSION_STAMP_RE);
+    if (vm) configuredVersion = vm[1];
+    harvest(line, manifestKeys, values, known);
+  }
 
   // From user content, migrate okffs var lines out (harvest + drop) and keep
   // everything else — comments, blanks, custom vars, commented custom vars —
@@ -85,7 +97,7 @@ export function parseEnv(path: string): ParsedEnv {
   const preamble = migrate(preLines, manifestKeys, values, known);
   const postamble = migrate(postLines, manifestKeys, values, known);
 
-  return { exists: true, preamble, postamble, values, known };
+  return { exists: true, preamble, postamble, values, known, configuredVersion };
 }
 
 // Record an okffs var line's key (+ value if set) without keeping the line.
@@ -156,12 +168,13 @@ const END_LINE = `# ${"═".repeat(23)} ${END_MARKER} ${"═".repeat(24)}`;
  * block (regenerated from the manifest + collected values), then the preserved
  * user postamble. Only the managed block is okffs's to rewrite.
  */
-export function serializeEnv(collected: Collected, preamble: string, postamble: string): string {
+export function serializeEnv(collected: Collected, preamble: string, postamble: string, version?: string): string {
   const block: string[] = [
     START_LINE,
     "# Managed by `okffs setup` — regenerated on every run; set these via",
     "# `okffs setup`, not by hand. Your own variables and comments OUTSIDE this",
     "# block are left untouched.",
+    ...(version ? [`# okffs:configured-version=${version}`] : []),
     "",
   ];
 

@@ -23,6 +23,8 @@ npx @neturely/okffs setup
 
 It walks you through auth, repo, and any optional features, writes a `.env`, then runs a quick GitHub sanity check. Re-run it any time (e.g. after upgrading okffs) — it only asks about options that are new since your last run. If you're happy relying on the [GitHub CLI](https://cli.github.com/) (`gh auth login`) and working inside the repo you want to manage, you can skip this step entirely — okffs works with **no config at all**.
 
+> **Already in Claude Code?** Once okffs is connected you can configure it conversationally instead — run the **`/okffs:setup`** slash command and Claude will interview you and write the `.env` for you (no terminal needed). okffs also nudges you to run it after an upgrade introduces new options.
+
 **2. Add a `.mcp.json`** to your project root:
 
 ```json

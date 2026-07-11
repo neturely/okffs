@@ -5,6 +5,7 @@
 // index.ts only dynamically imports this module for a bare (no-arg) invocation,
 // so the MCP server's behaviour is unchanged.
 import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
@@ -38,13 +39,18 @@ import * as updateIssue from "./tools/update_issue.js";
 import * as promoteBranch from "./tools/promote_branch.js";
 import * as mergePullRequest from "./tools/merge_pull_request.js";
 import * as fixIntoBase from "./tools/fix_into_base.js";
+import * as configure from "./tools/configure.js";
 
 import * as addressPrReview from "./prompts/address_pr_review.js";
 import * as updateGuidance from "./prompts/update_guidance.js";
+import * as setupPrompt from "./prompts/setup.js";
 
-const tools = [createIssue, listIssues, closeIssue, deleteIssue, deleteBranch, getIssue, commentIssue, createIssuesFromList, plan, linkIssues, createPullRequest, commitAndUpdate, listPrReviewComments, replyToReviewComment, resolveReviewThread, prepareRelease, updateProjectStatus, setIssueFields, updateIssue, promoteBranch, mergePullRequest, fixIntoBase];
+import { parseEnv } from "./cli/env.js";
+import { allKeys } from "./cli/manifest.js";
 
-const prompts = [addressPrReview, updateGuidance];
+const tools = [createIssue, listIssues, closeIssue, deleteIssue, deleteBranch, getIssue, commentIssue, createIssuesFromList, plan, linkIssues, createPullRequest, commitAndUpdate, listPrReviewComments, replyToReviewComment, resolveReviewThread, prepareRelease, updateProjectStatus, setIssueFields, updateIssue, promoteBranch, mergePullRequest, fixIntoBase, configure];
+
+const prompts = [addressPrReview, updateGuidance, setupPrompt];
 
 // Read the package version so the server reports the real version (dist/server.js
 // lives one level below package.json in both dev and the published package).
@@ -81,10 +87,49 @@ Setup/config: if the user needs to configure okffs — a missing token/repo, or 
 
 Rules: never merge, tag, or publish into OKFFS_PROTECTED_BRANCH autonomously — okffs may OPEN a PR into it (promote_branch), but the merge/tag are yours to hand back for. merge_pull_request only ever lands PRs into the base tier, never the protected branch. Destructive tools (delete_issue, delete_branch) require confirmed: true (call once to preview, again to act).`;
 
+// Compare two dotted versions; >0 if a is newer than b. Prerelease suffixes are
+// ignored (split on `.`/`-`), which is fine for the coarse "did we upgrade?" check.
+function isNewer(a: string, b: string): boolean {
+  const pa = a.split(/[.-]/).map((n) => parseInt(n, 10) || 0);
+  const pb = b.split(/[.-]/).map((n) => parseInt(n, 10) || 0);
+  for (let i = 0; i < 3; i++) {
+    const d = (pa[i] || 0) - (pb[i] || 0);
+    if (d !== 0) return d > 0;
+  }
+  return false;
+}
+
+// Upgrade nudge (#242): if this repo's .env was configured by an older okffs (or
+// predates version stamping) AND this okffs version has config options not set
+// here, append a one-time-per-session note so the agent can OFFER /okffs:setup.
+// Gentle by construction — it lands in the always-on instructions read on connect,
+// not a per-turn interruption, and self-resolves once the user runs setup (which
+// stamps the current version and marks the new options known/declined).
+function upgradeNudge(): string {
+  try {
+    const parsed = parseEnv(join(process.cwd(), ".env"));
+    if (!parsed.exists) return "";
+    const stamp = parsed.configuredVersion;
+    const configuredCount = allKeys().filter((k) => parsed.known.has(k)).length;
+    // Only for repos that actually use okffs config (a stamp, or some okffs vars);
+    // don't pester a .env that just isn't an okffs-configured repo.
+    if (!stamp && configuredCount === 0) return "";
+    // Only when this okffs is newer than what configured the .env (or the .env
+    // predates stamping — stamp === null).
+    if (stamp && !isNewer(version, stamp)) return "";
+    const newKeys = allKeys().filter((k) => !parsed.known.has(k));
+    if (newKeys.length === 0) return "";
+    const from = stamp ? `from ${stamp} ` : "";
+    return `\n\nUPGRADE NUDGE: this repo's .env was configured ${from}with an older okffs; okffs ${version} has ${newKeys.length} config option(s) not set here. Once, offer to run the /okffs:setup prompt (sync) to review the new options — if the user declines, drop it, don't repeat.`;
+  } catch {
+    return "";
+  }
+}
+
 export async function startServer(): Promise<void> {
   const server = new Server(
     { name: "okffs", version },
-    { capabilities: { tools: {}, prompts: {} }, instructions: SERVER_INSTRUCTIONS }
+    { capabilities: { tools: {}, prompts: {} }, instructions: SERVER_INSTRUCTIONS + upgradeNudge() }
   );
 
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
