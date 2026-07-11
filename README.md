@@ -15,7 +15,17 @@ okffs is a [Model Context Protocol](https://modelcontextprotocol.io) server that
 
 ## Quick start
 
-Add a `.mcp.json` to your project root:
+**1. Run the setup wizard** from your project root:
+
+```bash
+npx @neturely/okffs setup
+```
+
+It walks you through auth, repo, and any optional features, writes a `.env`, then runs a quick GitHub sanity check. Re-run it any time (e.g. after upgrading okffs) — it only asks about options that are new since your last run. If you're happy relying on the [GitHub CLI](https://cli.github.com/) (`gh auth login`) and working inside the repo you want to manage, you can skip this step entirely — okffs works with **no config at all**.
+
+> **Already in Claude Code?** Once okffs is connected you can configure it conversationally instead — run the **`/okffs:setup`** slash command and Claude will interview you and write the `.env` for you (no terminal needed). okffs also nudges you to run it after an upgrade introduces new options.
+
+**2. Add a `.mcp.json`** to your project root:
 
 ```json
 {
@@ -28,7 +38,7 @@ Add a `.mcp.json` to your project root:
 }
 ```
 
-That's it — `npx` fetches okffs on first use, and Claude Code picks up the tools automatically. If you're signed in with the [GitHub CLI](https://cli.github.com/) (`gh auth login`) and working inside the repo you want to manage, **no other setup is needed**. To use a token or a different repo instead, see [Configuration](#configuration).
+That's it — `npx` fetches okffs on first use, and Claude Code picks up the tools automatically. To use a token or a different repo instead of the `gh`/auto-detect defaults, run `okffs setup` (above) or edit `.env` by hand — see [Configuration](#configuration).
 
 Now just ask Claude:
 
@@ -64,6 +74,7 @@ Claude infers labels (`bug`, `enhancement`, …) from the title and description 
 | `update_project_status` | Moves an issue between board columns (`Backlog`, `Ready`, `In Progress`, `Review`). Needs `OKFFS_PROJECT_ENABLED`. |
 | `set_issue_fields` | Sets board Priority/Effort **and/or the native Issue Type** on an **existing** issue. Priority/Effort handle project-native and org-level Issue Fields (needs `OKFFS_PROJECT_ENABLED`); `type` is org-native and works independently. `create_issue` only sets these at creation; use this afterwards. Status stays with `update_project_status`. |
 | `update_issue` | Edits an **existing** issue's core fields — `title`, `assignees`, `labels`, `milestone`, `body` — via one PATCH with the configured token. `labels`/`assignees` replace the whole set (`[]` clears). For Priority/Effort/Type use `set_issue_fields`; for Status use `update_project_status`. |
+| `configure` | Writes okffs config to `.env` — the backend for the `/okffs:setup` prompt. Reuses the `okffs setup` wizard's manifest/serializer: updates only okffs's marked block, preserving your own variables and comments. Usually driven by `/okffs:setup`, not called directly. |
 | `delete_issue` | Closes an issue **and** deletes its branch. Destructive — needs `confirmed: true`. |
 | `delete_branch` | Deletes a branch **and** closes its issue. Destructive — needs `confirmed: true`. |
 
@@ -106,6 +117,8 @@ Once enabled, `list_issues` shows each issue's column, priority, and effort (ord
 **Token permission:** Projects v2 is GraphQL-only and needs a Projects-capable token — a fine-grained PAT with *Organization → Projects: Read and write*, or a classic PAT with the `project` scope. A single classic token with `repo` + `project` + `admin:org` covers everything, including org-level Issue Fields. Missing permission surfaces a clear `[okffs]` error naming what's needed.
 
 ## Configuration
+
+The quickest way to configure okffs is the wizard — `npx @neturely/okffs setup` — which writes and maintains the `.env` described below for you. The rest of this section documents what it (or you, by hand) can set.
 
 okffs resolves a **token** and a **target repository** with fallbacks, so most users need little config.
 

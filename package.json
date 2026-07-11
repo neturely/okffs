@@ -1,6 +1,6 @@
 {
   "name": "@neturely/okffs",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "mcpName": "io.github.neturely/okffs",
   "description": "MCP server that connects Claude Code to GitHub — create and manage issues and branches without leaving your editor.",
   "type": "module",
@@ -11,7 +11,7 @@
   "scripts": {
     "build": "tsc",
     "prepublishOnly": "npm run build",
-    "postbuild": "node -e \"const fs=require('fs');const f='dist/index.js';const c=fs.readFileSync(f,'utf8');if(!c.startsWith('#!/usr/bin/env node'))fs.writeFileSync(f,'#!/usr/bin/env node\\n'+c);\" && chmod +x dist/index.js",
+    "postbuild": "node -e \"const fs=require('fs');for(const f of ['dist/index.js','dist/cli/index.js']){const c=fs.readFileSync(f,'utf8');if(!c.startsWith('#!/usr/bin/env node'))fs.writeFileSync(f,'#!/usr/bin/env node\\n'+c);}\" && chmod +x dist/index.js dist/cli/index.js",
     "dev": "node --env-file=.env --import tsx/esm src/index.ts",
     "start": "node --env-file=.env dist/index.js"
   },
@@ -35,7 +35,11 @@
   "publishConfig": {
     "access": "public"
   },
+  "engines": {
+    "node": ">=20.12.0"
+  },
   "dependencies": {
+    "@clack/prompts": "^1.7.0",
     "@modelcontextprotocol/sdk": "^1.12.0",
     "dotenv": "^17.4.2",
     "zod": "^3.23.8",
