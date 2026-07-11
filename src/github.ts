@@ -58,7 +58,8 @@ export const repo = resolved.repo;
 
 if (!token) {
   throw new Error(
-    `No GitHub token found. Set GITHUB_TOKEN in .env — a fine-grained PAT (least privilege; ` +
+    `No GitHub token found. Quickest fix: run \`npx @neturely/okffs setup\` in your repo for a guided setup. ` +
+      `Or set GITHUB_TOKEN in .env yourself — a fine-grained PAT (least privilege; ` +
       `Issues/Contents/Pull requests read-write, Metadata read, Administration read-write) or, for a quick start, ` +
       `a classic broad repo-scope token: ${PAT_LINK} — or sign in with the GitHub CLI (\`gh auth login\`).`
   );
@@ -66,7 +67,8 @@ if (!token) {
 
 if (!owner || !repo) {
   throw new Error(
-    "Could not determine the GitHub repository. Run okffs from inside a git repo with a GitHub `origin` remote, or set GITHUB_OWNER and GITHUB_REPO in .env."
+    "Could not determine the GitHub repository. Quickest fix: run `npx @neturely/okffs setup` in your repo for a guided setup. " +
+      "Or run okffs from inside a git repo with a GitHub `origin` remote, or set GITHUB_OWNER and GITHUB_REPO in .env."
   );
 }
 
