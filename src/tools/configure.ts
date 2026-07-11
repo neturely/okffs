@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { join } from "node:path";
 
-import { allKeys, findVar } from "../cli/manifest.js";
+import { allKeys } from "../cli/manifest.js";
 import { parseEnv, serializeEnv, writeEnv, type Collected } from "../cli/env.js";
 import { packageVersion } from "../cli/banner.js";
 
@@ -66,8 +66,22 @@ export async function handler(input: z.infer<typeof inputSchema>) {
   for (const [key, value] of Object.entries(set)) collected[key] = { state: "set", value };
   for (const key of declined) collected[key] = { state: "declined", value: "" };
 
-  const contents = serializeEnv(collected, parsed.preamble, parsed.postamble, packageVersion());
-  writeEnv(envPath, contents);
+  try {
+    const contents = serializeEnv(collected, parsed.preamble, parsed.postamble, packageVersion());
+    writeEnv(envPath, contents);
+  } catch (err) {
+    return {
+      content: [
+        {
+          type: "text" as const,
+          text:
+            `[okffs] Failed to write ${envPath}: ${err instanceof Error ? err.message : String(err)}. ` +
+            `Check that the directory is writable and not read-only. No changes were made.`,
+        },
+      ],
+      isError: true,
+    };
+  }
 
   // Build a human-readable summary (masking secrets).
   const setLines = Object.entries(set).map(([k, v]) => `  ${k}=${SECRET_KEYS.has(k) ? mask(v) : v}`);
