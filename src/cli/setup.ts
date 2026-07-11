@@ -12,7 +12,7 @@ import * as p from "@clack/prompts";
 import { SECTIONS, QUICK_KEYS, findVar, type Section, type VarSpec } from "./manifest.js";
 import { parseEnv, serializeEnv, writeEnv, type Collected, type Entry } from "./env.js";
 import { runSanity, type CheckStatus } from "./sanity.js";
-import { buildBannerInfo, renderBanner } from "./banner.js";
+import { buildBannerInfo, renderBanner, packageVersion } from "./banner.js";
 
 type Mode = "quick" | "full" | "sync";
 
@@ -240,7 +240,7 @@ async function askVar(spec: VarSpec, current: Entry | undefined): Promise<Entry 
 
 async function finish(collected: Collected, parsed: ReturnType<typeof parseEnv>, envPath: string, rewrote: boolean): Promise<void> {
   if (rewrote) {
-    const contents = serializeEnv(collected, parsed.preamble, parsed.postamble);
+    const contents = serializeEnv(collected, parsed.preamble, parsed.postamble, packageVersion());
     writeEnv(envPath, contents);
     p.log.success(`Wrote ${envPath}`);
   }
