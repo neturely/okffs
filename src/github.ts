@@ -325,6 +325,27 @@ export async function getIssueComments(issueNumber: number): Promise<Array<{ bod
 // Centralised here so every PR-open path benefits: create_issue's auto-PR, the
 // allow_empty backfill (create_pull_request / commit_and_update), promote_branch,
 // and fix_into_base — all go through createPullRequest / createDraftPullRequest.
+// Turn a thrown request() error ("GitHub API error 422: {json body}") into a
+// concise, human message — "<status> <github message>" — by extracting GitHub's
+// `message` field from the JSON body instead of dumping the whole raw response.
+// Keeps tool-facing text (e.g. create_issue's auto-PR WARN line) readable (#247
+// review). Falls back to the raw string when it doesn't match the known shape.
+export function summarizeGitHubError(err: unknown): string {
+  const raw = err instanceof Error ? err.message : String(err);
+  const m = raw.match(/^GitHub (?:API|GraphQL) error (\d+): ([\s\S]*)$/);
+  if (!m) return raw;
+  const [, status, body] = m;
+  try {
+    const parsed = JSON.parse(body);
+    if (parsed && typeof parsed.message === "string" && parsed.message.trim()) {
+      return `${status} ${parsed.message.trim()}`;
+    }
+  } catch {
+    /* body isn't JSON — fall through to the trimmed raw form */
+  }
+  return `${status} ${body}`.trim();
+}
+
 async function withPrCreateRetry<T>(fn: () => Promise<T>, attempts = 4, delayMs = 1500): Promise<T> {
   for (let attempt = 1; ; attempt++) {
     try {

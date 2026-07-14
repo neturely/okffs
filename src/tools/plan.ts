@@ -7,6 +7,7 @@ import {
   createBranch,
   buildBranchName,
   createDraftPullRequest,
+  summarizeGitHubError,
 } from "../github.js";
 import { config } from "../config.js";
 import { git, currentBranch } from "../git.js";
@@ -199,6 +200,7 @@ export async function handler(input: z.infer<typeof inputSchema>) {
   // Optionally open a draft PR per branch. Mirrors create_issue: push an empty
   // init commit so the branch diverges from base, then open the draft PR.
   const draftPRs: Record<number, string> = {};
+  const draftPRErrors: Record<number, string> = {};
   if (config.autoPR) {
     const previousBranch = currentBranch();
     try {
@@ -238,9 +240,14 @@ export async function handler(input: z.infer<typeof inputSchema>) {
         );
         draftPRs[entry.number] = pr.html_url;
       } catch (err) {
+        // Surface the per-issue failure as data in the response — never only to
+        // stderr — so a bulk run can't look like a silent partial success when a
+        // draft PR wasn't created (the #146 convention, applied to the bulk path
+        // like create_issue's single path — #247 review).
+        draftPRErrors[entry.number] = summarizeGitHubError(err);
         console.warn(
           `[okffs] Failed to create draft PR for #${entry.number}:`,
-          err instanceof Error ? err.message : err
+          draftPRErrors[entry.number]
         );
       }
     }
@@ -262,6 +269,11 @@ export async function handler(input: z.infer<typeof inputSchema>) {
     ];
     if (draftPRs[entry.number]) {
       lines.push(`  Draft PR: ${draftPRs[entry.number]}`);
+    } else if (draftPRErrors[entry.number]) {
+      lines.push(
+        `  ⚠ Auto-PR failed — ${draftPRErrors[entry.number]}`,
+        `    (Non-fatal: the issue + branch exist. create_pull_request backfills the draft PR later.)`
+      );
     }
     lines.push(
       ...renderBoardLines({

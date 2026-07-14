@@ -27,7 +27,11 @@ export function autopilotEnabled(): boolean {
  * emitting an empty heading. Blank/whitespace-only entries are dropped. #238.
  */
 export function renderAutopilotDecisions(decisions?: string[] | null): string | null {
-  const items = (decisions ?? []).map((d) => d.trim()).filter(Boolean);
+  // Strip a leading bullet marker (-, *, •) the caller may have already added, so
+  // "- chose X" and "chose X" both render as a single bullet rather than "- - …".
+  const items = (decisions ?? [])
+    .map((d) => d.trim().replace(/^[-*•]\s+/, "").trim())
+    .filter(Boolean);
   if (items.length === 0) return null;
   return ["## 🤖 Autopilot decisions", ...items.map((d) => `- ${d}`)].join("\n");
 }
