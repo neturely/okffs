@@ -14,6 +14,8 @@ dist/
 # Environment files
 .env
 .env.*.local
+# Backups may be copies of .env (with a live token) — never commit them
+*.bak
 
 # Personal/local notes (not for the public repo)
 instructions
@@ -40,3 +42,6 @@ Thumbs.db
 *.tmp
 *.temp
 /tmp/
+
+# GitHub CLI / tool local state (never commit or publish)
+.local/

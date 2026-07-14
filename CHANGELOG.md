@@ -5,6 +5,13 @@ See [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-07-11
+### Changed
+- commit_and_update: empty commit subject from whitespace-only or leading-blank-line hint ([#236](https://github.com/neturely/okffs/issues/236))
+### Added
+- `/okffs:setup` prompt + `configure` tool — configure okffs conversationally inside Claude Code (the in-chat counterpart to the `okffs setup` CLI). Claude interviews you from the same manifest the CLI uses and persists via `configure`, which writes only okffs's marked `.env` block and preserves your own variables/comments. On startup the server also stamps the configuring version and, when okffs has been upgraded and new options exist, nudges you (once) to run `/okffs:setup` ([#242](https://github.com/neturely/okffs/issues/242))
+- `okffs setup` — an interactive CLI wizard to create/update `.env` for a repo, with Quick/Full first-run modes and a sync mode that only prompts for options new since your last run (e.g. after an okffs upgrade). Runs a non-fatal GitHub sanity check and prints a config banner. Reach it via `npx @neturely/okffs setup` ([#240](https://github.com/neturely/okffs/issues/240))
+
 ## [0.8.0] - 2026-07-08
 ### Added
 - Add an issue-less "fix PR into base branch" tool (open + merge into develop, the mirror of promote_branch) ([#226](https://github.com/neturely/okffs/issues/226))
@@ -144,7 +151,8 @@ See [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `create_pull_request` commits the updated CHANGELOG onto the branch and pushes the branch before opening the PR, with non-blocking error handling ([#38](https://github.com/2b9sa2owa/okffs/issues/38)).
 - All git operations now run via `execFileSync` with argument arrays (no shell), removing command-injection risk from branch names and commit hints; tools also checkout the target branch before committing/pushing and restore the original branch afterward.
 
-[Unreleased]: https://github.com/neturely/okffs/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/neturely/okffs/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/neturely/okffs/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/neturely/okffs/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/neturely/okffs/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/neturely/okffs/compare/v0.5.2...v0.6.0

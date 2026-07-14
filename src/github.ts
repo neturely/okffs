@@ -58,7 +58,8 @@ export const repo = resolved.repo;
 
 if (!token) {
   throw new Error(
-    `No GitHub token found. Set GITHUB_TOKEN in .env — a fine-grained PAT (least privilege; ` +
+    `No GitHub token found. Quickest fix: run \`npx @neturely/okffs setup\` in your repo for a guided setup. ` +
+      `Or set GITHUB_TOKEN in .env yourself — a fine-grained PAT (least privilege; ` +
       `Issues/Contents/Pull requests read-write, Metadata read, Administration read-write) or, for a quick start, ` +
       `a classic broad repo-scope token: ${PAT_LINK} — or sign in with the GitHub CLI (\`gh auth login\`).`
   );
@@ -66,7 +67,8 @@ if (!token) {
 
 if (!owner || !repo) {
   throw new Error(
-    "Could not determine the GitHub repository. Run okffs from inside a git repo with a GitHub `origin` remote, or set GITHUB_OWNER and GITHUB_REPO in .env."
+    "Could not determine the GitHub repository. Quickest fix: run `npx @neturely/okffs setup` in your repo for a guided setup. " +
+      "Or run okffs from inside a git repo with a GitHub `origin` remote, or set GITHUB_OWNER and GITHUB_REPO in .env."
   );
 }
 
@@ -315,16 +317,42 @@ export async function getIssueComments(issueNumber: number): Promise<Array<{ bod
   return request(`/repos/${owner}/${repo}/issues/${issueNumber}/comments?per_page=100&sort=created&direction=desc`);
 }
 
+// GitHub can reject a PR POST with 422 "No commits between <base> and <head>"
+// when the POST outruns GitHub's own indexing of a commit that was pushed moments
+// earlier — the push→open-PR eventual-consistency race behind #247. It resolves
+// within seconds, so retry PR creation a few times with a short backoff. Any other
+// error (real "no commits", bad base, permissions, …) is rethrown immediately.
+// Centralised here so every PR-open path benefits: create_issue's auto-PR, the
+// allow_empty backfill (create_pull_request / commit_and_update), promote_branch,
+// and fix_into_base — all go through createPullRequest / createDraftPullRequest.
+async function withPrCreateRetry<T>(fn: () => Promise<T>, attempts = 4, delayMs = 1500): Promise<T> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      const isIndexingRace = /error 422/.test(msg) && /no commits between/i.test(msg);
+      if (!isIndexingRace || attempt >= attempts) throw err;
+      console.warn(
+        `[okffs] PR creation hit the push→POST indexing race (422 no commits) — retry ${attempt}/${attempts - 1} in ${delayMs}ms.`
+      );
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
+}
+
 export async function createPullRequest(
   title: string,
   body: string,
   head: string,
   base: string
 ): Promise<{ number: number; html_url: string; node_id: string }> {
-  return request(`/repos/${owner}/${repo}/pulls`, {
-    method: "POST",
-    body: JSON.stringify({ title, head, base, body }),
-  });
+  return withPrCreateRetry(() =>
+    request(`/repos/${owner}/${repo}/pulls`, {
+      method: "POST",
+      body: JSON.stringify({ title, head, base, body }),
+    })
+  );
 }
 
 // Request reviewers on a PR (REST). Used by promote_branch to put the configured
@@ -435,10 +463,12 @@ export async function createDraftPullRequest(
   head: string,
   base: string
 ): Promise<{ number: number; html_url: string }> {
-  return request(`/repos/${owner}/${repo}/pulls`, {
-    method: "POST",
-    body: JSON.stringify({ title, head, base, body, draft: true }),
-  });
+  return withPrCreateRetry(() =>
+    request(`/repos/${owner}/${repo}/pulls`, {
+      method: "POST",
+      body: JSON.stringify({ title, head, base, body, draft: true }),
+    })
+  );
 }
 
 export function extractBranchFromBody(body: string | null): string | null {
