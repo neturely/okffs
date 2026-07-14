@@ -137,6 +137,7 @@ export async function handler(input: z.infer<typeof inputSchema>) {
   }
 
   let draftPRUrl: string | null = null;
+  let autoPRError: string | null = null;
   if (config.autoPR) {
     // Push an empty init commit so the branch diverges from base, allowing
     // GitHub to accept a draft PR immediately. Only needed for the auto-PR flow.
@@ -156,7 +157,12 @@ export async function handler(input: z.infer<typeof inputSchema>) {
       );
       draftPRUrl = pr.html_url;
     } catch (err) {
-      console.warn("[okffs] Failed to create draft PR:", err instanceof Error ? err.message : err);
+      // Non-fatal, but surface it as data in the response — never only to stderr,
+      // which the host/user never sees. This is the #146 board convention applied
+      // to the auto-PR block: otherwise create_issue looks like it silently
+      // half-succeeded, with the missing `Draft PR:` line the only clue (#247).
+      autoPRError = err instanceof Error ? err.message : String(err);
+      console.warn("[okffs] Failed to create draft PR:", autoPRError);
     }
   }
 
@@ -178,6 +184,11 @@ export async function handler(input: z.infer<typeof inputSchema>) {
 
   if (draftPRUrl) {
     lines.push(`Draft PR: ${draftPRUrl}`);
+  } else if (autoPRError) {
+    lines.push(
+      `⚠ Auto-PR failed — ${autoPRError}`,
+      `  (Non-fatal: the issue + branch are created. create_pull_request backfills the draft PR when you open the real PR.)`
+    );
   }
 
   if (resolvedAssignees.length > 0) {
