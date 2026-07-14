@@ -139,7 +139,7 @@ export async function handler(input: z.infer<typeof inputSchema>) {
     filesSection,
     hintText ? `\n**Summary:** ${hintText}` : "",
     decisionsSection ? `\n${decisionsSection}` : "",
-  ].filter((l) => l !== undefined && l !== "").join("\n");
+  ].filter((l) => l !== undefined).join("\n");
 
   await addIssueComment(input.issue_number, comment);
 
