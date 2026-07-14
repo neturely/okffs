@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { createIssue, updateIssueBody, getDefaultBranch, getRef, createBranch, buildBranchName, createDraftPullRequest } from "../github.js";
+import { createIssue, updateIssueBody, getDefaultBranch, getRef, createBranch, buildBranchName, createDraftPullRequest, summarizeGitHubError } from "../github.js";
 import { config } from "../config.js";
 import { pushEmptyInitCommit } from "../git.js";
 import {
@@ -162,7 +162,7 @@ export async function handler(input: z.infer<typeof inputSchema>) {
       // which the host/user never sees. This is the #146 board convention applied
       // to the auto-PR block: otherwise create_issue looks like it silently
       // half-succeeded, with the missing `Draft PR:` line the only clue (#247).
-      autoPRError = err instanceof Error ? err.message : String(err);
+      autoPRError = summarizeGitHubError(err);
       console.warn("[okffs] Failed to create draft PR:", autoPRError);
     }
   }
