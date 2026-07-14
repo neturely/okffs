@@ -17,6 +17,7 @@ import {
 import { config } from "../config.js";
 import { updateProjectDocs } from "../docs.js";
 import { git, currentBranch, pushEmptyInitCommit } from "../git.js";
+import { renderAutopilotDecisions, AUTOPILOT_DECISIONS_DESCRIPTION } from "../autopilot.js";
 
 export const name = "create_pull_request";
 
@@ -28,6 +29,7 @@ export const inputSchema = z.object({
   summary: z.string().optional().describe("Optional summary of what was done — used in PR body and issue comment"),
   branch: z.string().optional().describe("Branch to open the PR from, for issues whose branch okffs didn't create (no **Branch:** line in the body). Usually unnecessary — okffs-created issues carry the link, and a checked-out branch named {issue-number}-… is inferred automatically. When used, okffs backfills the **Branch:** line onto the issue."),
   allow_empty: z.boolean().optional().describe("When the branch has no commits ahead of base, push an empty init commit so it diverges and open a DRAFT tracking PR instead of refusing. Opt-in (default false) — use to backfill a PR onto a branch that was created empty. Ignored when the branch already has commits."),
+  autopilot_decisions: z.array(z.string()).optional().describe(AUTOPILOT_DECISIONS_DESCRIPTION),
 });
 
 export async function handler(input: z.infer<typeof inputSchema>) {
@@ -164,6 +166,14 @@ export async function handler(input: z.infer<typeof inputSchema>) {
 
   if (commentsSection) {
     bodyParts.push(``, `## Issue comments`, commentsSection);
+  }
+
+  // Autopilot decisions report (#238): the safety-valve audit trail. Rendered
+  // into the PR body (and, via the issue comment below which echoes the body,
+  // the issue) so a decide-then-report autopilot run is redirectable in one msg.
+  const decisionsSection = renderAutopilotDecisions(input.autopilot_decisions);
+  if (decisionsSection) {
+    bodyParts.push(``, decisionsSection);
   }
 
   bodyParts.push(``, `Closes #${input.issue_number}`);

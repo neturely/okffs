@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { addIssueComment, getIssue, extractBranchFromBody } from "../github.js";
 import { git, gitOutput, currentBranch } from "../git.js";
+import { renderAutopilotDecisions, AUTOPILOT_DECISIONS_DESCRIPTION } from "../autopilot.js";
 
 export const name = "commit_and_update";
 export const description =
@@ -9,6 +10,7 @@ export const description =
 export const inputSchema = z.object({
   issue_number: z.number().int().positive().describe("The issue number this work is against"),
   hint: z.string().optional().describe("Short description of what was done — used to build the commit message and issue comment"),
+  autopilot_decisions: z.array(z.string()).optional().describe(AUTOPILOT_DECISIONS_DESCRIPTION),
 });
 
 const SUBJECT_MAX = 72;
@@ -122,6 +124,10 @@ export async function handler(input: z.infer<typeof inputSchema>) {
     ? changedFiles.map((f) => `- \`${f}\``).join("\n")
     : "- No files detected";
 
+  // Autopilot decisions report (#238) — logged onto the issue as work progresses
+  // so a decide-then-report run leaves an audit trail at each step, not only at PR.
+  const decisionsSection = renderAutopilotDecisions(input.autopilot_decisions);
+
   const comment = [
     `### 🔧 Commit update`,
     ``,
@@ -132,7 +138,8 @@ export async function handler(input: z.infer<typeof inputSchema>) {
     `**Files changed:**`,
     filesSection,
     hintText ? `\n**Summary:** ${hintText}` : "",
-  ].filter((l) => l !== undefined).join("\n");
+    decisionsSection ? `\n${decisionsSection}` : "",
+  ].filter((l) => l !== undefined && l !== "").join("\n");
 
   await addIssueComment(input.issue_number, comment);
 
