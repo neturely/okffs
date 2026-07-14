@@ -314,8 +314,19 @@ export const SECTIONS: Section[] = [
     ],
   },
   {
+    id: "autopilot",
+    title: "9. Autopilot (minimum interference)",
+    blurb:
+      "When on, okffs takes the recommended option at each REVERSIBLE fork and drives an issue to a base-branch PR without stopping to ask, then reports the decisions. Hard stops (protected branch, destructive confirmed, anything billable/irreversible) still interrupt. Also activatable per-request with a phrase like \"fully handle this\".",
+    gated: true,
+    gateKey: "OKFFS_AUTOPILOT",
+    gatePrompt:
+      "Enable autopilot (minimum-interference) mode by default? okffs takes the recommended option at each reversible fork, drives to a base-branch PR, and reports the decisions — never crossing the protected-branch / destructive / cost hard stops.",
+    vars: [],
+  },
+  {
     id: "misc",
-    title: "9. Misc",
+    title: "10. Misc",
     gated: true,
     gatePrompt: "Configure misc options (metadata tip)?",
     vars: [

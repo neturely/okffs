@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { createIssue, updateIssueBody, getDefaultBranch, getRef, createBranch, buildBranchName, createDraftPullRequest } from "../github.js";
+import { createIssue, updateIssueBody, getDefaultBranch, getRef, createBranch, buildBranchName, createDraftPullRequest, summarizeGitHubError } from "../github.js";
 import { config } from "../config.js";
 import { pushEmptyInitCommit } from "../git.js";
 import {
@@ -13,6 +13,7 @@ import {
   type BoardFieldOutcome,
 } from "../board.js";
 import { applyIssueType, getIssueTypeNames } from "../issue_types.js";
+import { autopilotEnabled } from "../autopilot.js";
 
 export const name = "create_issue";
 
@@ -137,6 +138,7 @@ export async function handler(input: z.infer<typeof inputSchema>) {
   }
 
   let draftPRUrl: string | null = null;
+  let autoPRError: string | null = null;
   if (config.autoPR) {
     // Push an empty init commit so the branch diverges from base, allowing
     // GitHub to accept a draft PR immediately. Only needed for the auto-PR flow.
@@ -156,7 +158,12 @@ export async function handler(input: z.infer<typeof inputSchema>) {
       );
       draftPRUrl = pr.html_url;
     } catch (err) {
-      console.warn("[okffs] Failed to create draft PR:", err instanceof Error ? err.message : err);
+      // Non-fatal, but surface it as data in the response — never only to stderr,
+      // which the host/user never sees. This is the #146 board convention applied
+      // to the auto-PR block: otherwise create_issue looks like it silently
+      // half-succeeded, with the missing `Draft PR:` line the only clue (#247).
+      autoPRError = summarizeGitHubError(err);
+      console.warn("[okffs] Failed to create draft PR:", autoPRError);
     }
   }
 
@@ -178,6 +185,11 @@ export async function handler(input: z.infer<typeof inputSchema>) {
 
   if (draftPRUrl) {
     lines.push(`Draft PR: ${draftPRUrl}`);
+  } else if (autoPRError) {
+    lines.push(
+      `⚠ Auto-PR failed — ${autoPRError}`,
+      `  (Non-fatal: the issue + branch are created. create_pull_request backfills the draft PR when you open the real PR.)`
+    );
   }
 
   if (resolvedAssignees.length > 0) {
@@ -220,13 +232,25 @@ export async function handler(input: z.infer<typeof inputSchema>) {
   );
 
   // Conversational nudge: prompt the host LLM to offer moving the issue into
-  // the "In Progress" column via update_project_status once work begins.
+  // the "In Progress" column via update_project_status once work begins, and to
+  // offer autopilot (minimum-interference) end-to-end handling — mirroring an
+  // auto mode (#238). When OKFFS_AUTOPILOT is already on the agent just proceeds
+  // (the server banner told it so), so we don't re-offer.
+  const inAutopilot = autopilotEnabled();
+  const autopilotOffer = inAutopilot
+    ? ""
+    : ` Or should I fully handle it end-to-end on autopilot — take the recommended option at each reversible fork, drive it to a PR into the base branch, and report the decisions?`;
   if (addedToBoard) {
     const where = initialStatus?.applied ? `"${initialStatus.applied}"` : "its default column";
     lines.push(
       ``,
       `This issue is on the board in ${where}. Want me to move it to "In Progress" and start? ` +
-      `(I can call update_project_status for #${issue.number}.)`
+      `(I can call update_project_status for #${issue.number}.)` + autopilotOffer
+    );
+  } else if (autopilotOffer) {
+    lines.push(
+      ``,
+      `Want me to start on this now?${autopilotOffer}`
     );
   }
 

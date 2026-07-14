@@ -317,16 +317,63 @@ export async function getIssueComments(issueNumber: number): Promise<Array<{ bod
   return request(`/repos/${owner}/${repo}/issues/${issueNumber}/comments?per_page=100&sort=created&direction=desc`);
 }
 
+// GitHub can reject a PR POST with 422 "No commits between <base> and <head>"
+// when the POST outruns GitHub's own indexing of a commit that was pushed moments
+// earlier — the push→open-PR eventual-consistency race behind #247. It resolves
+// within seconds, so retry PR creation a few times with a short backoff. Any other
+// error (real "no commits", bad base, permissions, …) is rethrown immediately.
+// Centralised here so every PR-open path benefits: create_issue's auto-PR, the
+// allow_empty backfill (create_pull_request / commit_and_update), promote_branch,
+// and fix_into_base — all go through createPullRequest / createDraftPullRequest.
+// Turn a thrown request() error ("GitHub API error 422: {json body}") into a
+// concise, human message — "<status> <github message>" — by extracting GitHub's
+// `message` field from the JSON body instead of dumping the whole raw response.
+// Keeps tool-facing text (e.g. create_issue's auto-PR WARN line) readable (#247
+// review). Falls back to the raw string when it doesn't match the known shape.
+export function summarizeGitHubError(err: unknown): string {
+  const raw = err instanceof Error ? err.message : String(err);
+  const m = raw.match(/^GitHub (?:API|GraphQL) error (\d+): ([\s\S]*)$/);
+  if (!m) return raw;
+  const [, status, body] = m;
+  try {
+    const parsed = JSON.parse(body);
+    if (parsed && typeof parsed.message === "string" && parsed.message.trim()) {
+      return `${status} ${parsed.message.trim()}`;
+    }
+  } catch {
+    /* body isn't JSON — fall through to the trimmed raw form */
+  }
+  return `${status} ${body}`.trim();
+}
+
+async function withPrCreateRetry<T>(fn: () => Promise<T>, attempts = 4, delayMs = 1500): Promise<T> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      const isIndexingRace = /error 422/.test(msg) && /no commits between/i.test(msg);
+      if (!isIndexingRace || attempt >= attempts) throw err;
+      console.warn(
+        `[okffs] PR creation hit the push→POST indexing race (422 no commits) — retry ${attempt}/${attempts - 1} in ${delayMs}ms.`
+      );
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
+}
+
 export async function createPullRequest(
   title: string,
   body: string,
   head: string,
   base: string
 ): Promise<{ number: number; html_url: string; node_id: string }> {
-  return request(`/repos/${owner}/${repo}/pulls`, {
-    method: "POST",
-    body: JSON.stringify({ title, head, base, body }),
-  });
+  return withPrCreateRetry(() =>
+    request(`/repos/${owner}/${repo}/pulls`, {
+      method: "POST",
+      body: JSON.stringify({ title, head, base, body }),
+    })
+  );
 }
 
 // Request reviewers on a PR (REST). Used by promote_branch to put the configured
@@ -437,10 +484,12 @@ export async function createDraftPullRequest(
   head: string,
   base: string
 ): Promise<{ number: number; html_url: string }> {
-  return request(`/repos/${owner}/${repo}/pulls`, {
-    method: "POST",
-    body: JSON.stringify({ title, head, base, body, draft: true }),
-  });
+  return withPrCreateRetry(() =>
+    request(`/repos/${owner}/${repo}/pulls`, {
+      method: "POST",
+      body: JSON.stringify({ title, head, base, body, draft: true }),
+    })
+  );
 }
 
 export function extractBranchFromBody(body: string | null): string | null {
