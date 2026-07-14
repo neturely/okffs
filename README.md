@@ -86,6 +86,12 @@ okffs has a built-in loop for review feedback — just ask (*"address the review
 
 By default review threads are left open for you to resolve; set `OKFFS_RESOLVE_THREADS=true` to have okffs resolve them once addressed.
 
+## Autopilot (minimum interference)
+
+For a hands-off session, ask Claude to *"fully handle this"* (or *"minimum interference"*) — or set `OKFFS_AUTOPILOT=true` to make it the default. In autopilot, Claude stops asking you to choose between options for **reversible** decisions, takes the recommended option at each fork, and drives an issue all the way to a PR into the base branch (and a base merge when `OKFFS_AUTO_MERGE_BASE=true`) — then posts an **"Autopilot decisions"** report (one line per choice, with a one-line why) to the PR and the issue, so you can redirect anything in a single message.
+
+It removes confirmation friction; it does **not** grant new powers. The hard stops always interrupt, even in autopilot: anything into `OKFFS_PROTECTED_BRANCH` (merge/tag/publish), destructive tools (`delete_issue` / `delete_branch`), anything billable (e.g. a Copilot review on a new promotion PR), and genuinely irreversible actions. And for a real *missing-information* call — where only you hold the context — Claude still asks one quick question rather than guess. Off by default.
+
 ## Keeping CLAUDE.md in sync
 
 The **`/okffs:update_guidance`** slash command reviews the changes on the current branch and maintains one okffs-owned section of your `CLAUDE.md` — `## Project Guidance (okffs usage)`, delimited by HTML markers — without ever touching your hand-written content. It's guidance curation (tools, env vars, conventions), not a changelog. Set `OKFFS_UPDATE_GUIDANCE=true` to have `create_pull_request` nudge Claude to run it at PR time; the command is always available.
@@ -197,6 +203,12 @@ All optional; unset unless noted. Grouped by concern — the same groups appear 
 | `OKFFS_PROMOTION_STATUS` | — | Board Status column the promotion PR card lands in (e.g. `Review`). Needs `OKFFS_PROJECT_ENABLED`. |
 | `OKFFS_PROMOTION_REVIEWERS` | — | Comma-separated reviewers to request on the gate PR (e.g. `copilot-pull-request-reviewer[bot]`). Only acted on when `OKFFS_PROMOTION_AUTO_REVIEW=true`. |
 | `OKFFS_PROMOTION_AUTO_REVIEW` | `false` | Opt in to auto-request those reviewers, **on gate-PR creation only** (never on re-runs). **⚠️ Cost:** Copilot code review is billable, so this charges per newly-created promotion PR. |
+
+**Autopilot (minimum interference)**
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `OKFFS_AUTOPILOT` | `false` | Default the session to [autopilot](#autopilot-minimum-interference): take the recommended option at each reversible fork, drive to a base-branch PR, and report the decisions. Hard stops (protected branch, destructive, billable, irreversible) still interrupt. Per-request activation (*"fully handle this"*) works regardless. |
 
 ## Conventions
 
