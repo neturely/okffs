@@ -54,6 +54,19 @@ export const config = {
   // The protected branch stays a manual, user-driven merge no matter what. #211.
   autoMergeBase: process.env.OKFFS_AUTO_MERGE_BASE === "true",
   updateDocs: process.env.OKFFS_UPDATE_DOCS === "true",
+  // OKFFS_AUTOPILOT=true — "minimum interference" mode, on by default for the
+  // session. Behavioural, NOT a privilege escalation: okffs can't literally
+  // suppress the agent's questions, so it carries the flag through the always-on
+  // SERVER_INSTRUCTIONS (the load-bearing piece). When active the agent takes the
+  // recommended option at each REVERSIBLE fork and drives an issue all the way to
+  // a base-branch PR (and a base merge where OKFFS_AUTO_MERGE_BASE=true) without
+  // stopping to ask, then reports the decisions. The hard stops still interrupt:
+  // anything into OKFFS_PROTECTED_BRANCH (merge/tag/publish), destructive
+  // confirmed:true tools, anything billable, and irreversible actions. Everything
+  // autopilot does stays on the recoverable side of OKFFS_PROTECTED_BRANCH — that
+  // is what makes decide-then-report safe. Also activatable per-request via a
+  // phrase like "fully handle this" (that path is purely behavioural). #238.
+  autopilot: process.env.OKFFS_AUTOPILOT === "true",
   // OKFFS_AUTO_PR=true — creates a draft PR when a new issue branch is created
   autoPR: process.env.OKFFS_AUTO_PR === "true",
   // OKFFS_RESOLVE_THREADS=true — auto-resolve PR review threads after they are

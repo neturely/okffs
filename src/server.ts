@@ -85,7 +85,14 @@ Common action → tool:
 
 Setup/config: if the user needs to configure okffs — a missing token/repo, or turning on a feature like Projects — offer the /okffs:setup prompt, which configures okffs conversationally right here in Claude Code (it interviews the user and persists via the configure tool, no terminal needed). The equivalent terminal wizard is \`npx @neturely/okffs setup\` — a guided CLI that writes/updates .env preserving the user's own vars and comments, but being interactive it must be run in their own terminal, not via a tool or the \`!\` shell.
 
-Rules: never merge, tag, or publish into OKFFS_PROTECTED_BRANCH autonomously — okffs may OPEN a PR into it (promote_branch), but the merge/tag are yours to hand back for. merge_pull_request only ever lands PRs into the base tier, never the protected branch. Destructive tools (delete_issue, delete_branch) require confirmed: true (call once to preview, again to act).`;
+Autopilot (minimum-interference mode): a session interaction style — when ACTIVE, stop asking the user to choose between options for REVERSIBLE decisions; take the recommended/logical option at each fork and drive the issue all the way to a PR into the base branch (and a merge into the base branch where OKFFS_AUTO_MERGE_BASE=true), then report the choices. It removes confirmation friction — it does NOT escalate authorization: everything autopilot does, okffs was already permitted to do, and it stays entirely on the recoverable side of OKFFS_PROTECTED_BRANCH (which is why decide-then-report is safe). Activate it per-request when the user says something like "minimum interference", "fully handle this", "handle it end to end", or "autopilot"; it is also on by default when OKFFS_AUTOPILOT=true. When it is NOT active, keep asking as usual. Under autopilot:
+- Decide-and-log (judgment calls): merge method, PR structure, whether a review nit is valid, changelog category, inferred priority/effort/type, and similar — pick the sensible default and record it; do not ask.
+- Ask-or-flag (missing-information calls): when a wrong guess would waste real work because only the user holds the context (e.g. "which of my repos matter", product intent) — "minimum", not "zero": you may ask ONE quick question, or pick the most reversible option and flag it prominently in the report for a one-message course-correction. Prefer this over a blunt "never ask" that silently takes the wrong branch.
+- HARD STOPS — always interrupt, even in autopilot: anything into OKFFS_PROTECTED_BRANCH (merge/tag/publish — the standing invariant); destructive tools (delete_issue/delete_branch confirmed:true); anything that costs money (e.g. a billable Copilot review on a NEW promotion PR — keep it asking); and genuinely irreversible or externally-visible actions.
+- Decisions report (the safety valve that makes decide-then-report acceptable): at the end of a run emit a concise "Autopilot decisions" block — one line per fork, what you chose + a one-line why. Pass it as create_pull_request's \`autopilot_decisions\` (and to commit_and_update along the way) so okffs renders it into the PR body and the issue comment, and echo it in chat.
+okffs also OFFERS autopilot when work starts (create_issue's closing prompt), mirroring an auto mode.
+
+Rules: never merge, tag, or publish into OKFFS_PROTECTED_BRANCH autonomously — okffs may OPEN a PR into it (promote_branch), but the merge/tag are yours to hand back for. merge_pull_request only ever lands PRs into the base tier, never the protected branch. Destructive tools (delete_issue, delete_branch) require confirmed: true (call once to preview, again to act). These rules hold even under autopilot.`;
 
 // Compare two dotted versions; >0 if a is newer than b. Prerelease suffixes are
 // ignored (split on `.`/`-`), which is fine for the coarse "did we upgrade?" check.
@@ -126,10 +133,21 @@ function upgradeNudge(): string {
   }
 }
 
+// Autopilot banner (#238): when OKFFS_AUTOPILOT=true, append a one-line note so
+// the agent knows minimum-interference mode is the session default and applies
+// the autopilot rules above without waiting to be told each turn. Off → nothing
+// (per-request activation via a phrase still works, and the guidance above still
+// describes the mode). Kept in sync with config.ts via the same env var.
+function autopilotBanner(): string {
+  return process.env.OKFFS_AUTOPILOT === "true"
+    ? `\n\nAUTOPILOT IS ACTIVE (OKFFS_AUTOPILOT=true): apply the minimum-interference rules above by default this session — take the recommended option at each reversible fork, drive to a base-branch PR, honour the hard stops, and end with an "Autopilot decisions" report.`
+    : "";
+}
+
 export async function startServer(): Promise<void> {
   const server = new Server(
     { name: "okffs", version },
-    { capabilities: { tools: {}, prompts: {} }, instructions: SERVER_INSTRUCTIONS + upgradeNudge() }
+    { capabilities: { tools: {}, prompts: {} }, instructions: SERVER_INSTRUCTIONS + upgradeNudge() + autopilotBanner() }
   );
 
   server.setRequestHandler(ListToolsRequestSchema, async () => ({

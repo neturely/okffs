@@ -13,6 +13,7 @@ import {
   type BoardFieldOutcome,
 } from "../board.js";
 import { applyIssueType, getIssueTypeNames } from "../issue_types.js";
+import { autopilotEnabled } from "../autopilot.js";
 
 export const name = "create_issue";
 
@@ -231,13 +232,25 @@ export async function handler(input: z.infer<typeof inputSchema>) {
   );
 
   // Conversational nudge: prompt the host LLM to offer moving the issue into
-  // the "In Progress" column via update_project_status once work begins.
+  // the "In Progress" column via update_project_status once work begins, and to
+  // offer autopilot (minimum-interference) end-to-end handling — mirroring an
+  // auto mode (#238). When OKFFS_AUTOPILOT is already on the agent just proceeds
+  // (the server banner told it so), so we don't re-offer.
+  const inAutopilot = autopilotEnabled();
+  const autopilotOffer = inAutopilot
+    ? ""
+    : ` Or should I fully handle it end-to-end on autopilot — take the recommended option at each reversible fork, drive it to a PR into the base branch, and report the decisions?`;
   if (addedToBoard) {
     const where = initialStatus?.applied ? `"${initialStatus.applied}"` : "its default column";
     lines.push(
       ``,
       `This issue is on the board in ${where}. Want me to move it to "In Progress" and start? ` +
-      `(I can call update_project_status for #${issue.number}.)`
+      `(I can call update_project_status for #${issue.number}.)` + autopilotOffer
+    );
+  } else if (autopilotOffer) {
+    lines.push(
+      ``,
+      `Want me to start on this now?${autopilotOffer}`
     );
   }
 
