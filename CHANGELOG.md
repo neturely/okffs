@@ -5,6 +5,12 @@ See [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-07-14
+### Added
+- Autopilot / "minimum interference" mode — autonomous issue → develop-PR with a decisions report ([#238](https://github.com/neturely/okffs/issues/238))
+### Fixed
+- Silent auto-PR failure in create_issue - swallowed to stderr, retry on 422 ([#247](https://github.com/neturely/okffs/issues/247))
+
 ## [0.9.0] - 2026-07-11
 ### Changed
 - commit_and_update: empty commit subject from whitespace-only or leading-blank-line hint ([#236](https://github.com/neturely/okffs/issues/236))
@@ -151,7 +157,8 @@ See [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `create_pull_request` commits the updated CHANGELOG onto the branch and pushes the branch before opening the PR, with non-blocking error handling ([#38](https://github.com/2b9sa2owa/okffs/issues/38)).
 - All git operations now run via `execFileSync` with argument arrays (no shell), removing command-injection risk from branch names and commit hints; tools also checkout the target branch before committing/pushing and restore the original branch afterward.
 
-[Unreleased]: https://github.com/neturely/okffs/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/neturely/okffs/compare/v0.10.0...HEAD
+[0.10.0]: https://github.com/neturely/okffs/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/neturely/okffs/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/neturely/okffs/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/neturely/okffs/compare/v0.6.0...v0.7.0
