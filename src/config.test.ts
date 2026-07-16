@@ -10,7 +10,7 @@ test("parseCommaList drops empty entries", () => {
   assert.deepEqual(parseCommaList(undefined), []);
   assert.deepEqual(parseCommaList(""), []);
 
-  // Whitespace-only → [] (was ["\"\""] before the fix).
+  // Whitespace-only → [] (was [""] before the fix).
   assert.deepEqual(parseCommaList(" "), []);
   assert.deepEqual(parseCommaList(" , "), []);
 
