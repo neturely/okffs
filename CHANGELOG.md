@@ -5,6 +5,13 @@ See [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.10.1] - 2026-07-16
+### Changed
+- list_issues board column is cross-repo unsafe — project: reports another repo's status on number collisions ([#257](https://github.com/neturely/okffs/issues/257))
+- Harden env-var parsing: filter empty entries in comma-list vars + audit empty/missing values ([#253](https://github.com/neturely/okffs/issues/253))
+### Fixed
+- address_pr_review: route protected-head fixes through fix_into_base, not a follow-up issue + issue branch ([#255](https://github.com/neturely/okffs/issues/255))
+
 ## [0.10.0] - 2026-07-14
 ### Added
 - Autopilot / "minimum interference" mode — autonomous issue → develop-PR with a decisions report ([#238](https://github.com/neturely/okffs/issues/238))
@@ -157,7 +164,8 @@ See [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `create_pull_request` commits the updated CHANGELOG onto the branch and pushes the branch before opening the PR, with non-blocking error handling ([#38](https://github.com/2b9sa2owa/okffs/issues/38)).
 - All git operations now run via `execFileSync` with argument arrays (no shell), removing command-injection risk from branch names and commit hints; tools also checkout the target branch before committing/pushing and restore the original branch afterward.
 
-[Unreleased]: https://github.com/neturely/okffs/compare/v0.10.0...HEAD
+[Unreleased]: https://github.com/neturely/okffs/compare/v0.10.1...HEAD
+[0.10.1]: https://github.com/neturely/okffs/compare/v0.10.0...v0.10.1
 [0.10.0]: https://github.com/neturely/okffs/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/neturely/okffs/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/neturely/okffs/compare/v0.7.0...v0.8.0
