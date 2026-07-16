@@ -1,3 +1,15 @@
+// Parse a comma-separated env var into a trimmed list with empty entries
+// dropped. An unset or empty value yields []; trailing commas and whitespace-only
+// entries (e.g. "okffs," → ["okffs"], " " → []) never emit a phantom "" that would
+// otherwise reach the GitHub API as an invalid label/assignee. Pure over its input
+// so the parsing is unit-testable without mutating process.env (#253).
+export function parseCommaList(raw: string | undefined): string[] {
+  return (raw ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
 // GitHub's three PR merge methods. okffs records the method per branch tier
 // (base vs protected) so a merge — whoever performs it — uses the convention the
 // repo settled on (e.g. squash into develop, merge-commit into main). #209.
@@ -9,8 +21,10 @@ const MERGE_METHODS: readonly MergeMethod[] = ["squash", "merge", "rebase"];
 // falls back to the default rather than failing startup.
 function parseMergeMethod(envVar: string, def: MergeMethod): MergeMethod {
   const raw = process.env[envVar];
-  if (!raw) return def;
-  const value = raw.trim().toLowerCase();
+  // Trim before the emptiness check so a whitespace-only value takes the default
+  // silently too, rather than warning as if it were a genuine invalid method.
+  const value = raw?.trim().toLowerCase();
+  if (!value) return def;
   if ((MERGE_METHODS as readonly string[]).includes(value)) return value as MergeMethod;
   console.warn(
     `[okffs] ${envVar}="${raw}" is not a valid merge method (expected one of ${MERGE_METHODS.join(", ")}) — falling back to "${def}".`
@@ -18,14 +32,15 @@ function parseMergeMethod(envVar: string, def: MergeMethod): MergeMethod {
   return def;
 }
 
+// Invariant: an empty or unset env value degrades to a safe no-op, never an
+// error (#253). Scalars use `|| null` (empty ⇒ null), booleans use `=== "true"`
+// (empty ⇒ false) or `!== "false"` for default-on (empty ⇒ true), comma-lists go
+// through parseCommaList (empty/whitespace/trailing-comma ⇒ no phantom entry),
+// and parseMergeMethod falls back to its default. No env var throws on empty.
 export const config = {
   promptForMetadata: process.env.OKFFS_PROMPT_METADATA !== "false",
-  defaultAssignees: process.env.OKFFS_DEFAULT_ASSIGNEES
-    ? process.env.OKFFS_DEFAULT_ASSIGNEES.split(",").map((s) => s.trim())
-    : [],
-  defaultLabels: process.env.OKFFS_DEFAULT_LABELS
-    ? process.env.OKFFS_DEFAULT_LABELS.split(",").map((s) => s.trim())
-    : [],
+  defaultAssignees: parseCommaList(process.env.OKFFS_DEFAULT_ASSIGNEES),
+  defaultLabels: parseCommaList(process.env.OKFFS_DEFAULT_LABELS),
   baseBranch: process.env.OKFFS_BASE_BRANCH || null,
   // OKFFS_PROTECTED_BRANCH — a branch okffs won't open/finalize a PR into without
   // explicit user confirmation (e.g. `main`). create_pull_request refuses to
@@ -76,9 +91,7 @@ export const config = {
   // new/changed functionality when a PR is created (intelligent, not a changelog
   // append). Default false. The `update_guidance` prompt works regardless.
   updateGuidance: process.env.OKFFS_UPDATE_GUIDANCE === "true",
-  excludeDocs: process.env.OKFFS_EXCLUDE_DOCS
-    ? process.env.OKFFS_EXCLUDE_DOCS.split(",").map((s) => s.trim())
-    : [],
+  excludeDocs: parseCommaList(process.env.OKFFS_EXCLUDE_DOCS),
   // ── GitHub Projects v2 (Phase 5) ──────────────────────────────────────────
   // OKFFS_PROJECT_ENABLED=true — opt-in; surfaces the project column in
   // list_issues and lets update_project_status run. Zero overhead when unset.
@@ -136,9 +149,7 @@ export const config = {
   // Copilot code review, the develop→main review convention). Unset = request no
   // reviewers. Best-effort: a failure warns and never blocks the PR. (#182)
   // Only acted on when OKFFS_PROMOTION_AUTO_REVIEW is true.
-  promotionReviewers: process.env.OKFFS_PROMOTION_REVIEWERS
-    ? process.env.OKFFS_PROMOTION_REVIEWERS.split(",").map((s) => s.trim()).filter(Boolean)
-    : [],
+  promotionReviewers: parseCommaList(process.env.OKFFS_PROMOTION_REVIEWERS),
   // OKFFS_PROMOTION_AUTO_REVIEW — explicit opt-in for promote_branch to auto-request
   // OKFFS_PROMOTION_REVIEWERS on the gate PR. Default false (cost-safe). When true,
   // reviewers are requested ONLY when the gate PR is first created — never on
