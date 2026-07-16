@@ -17,7 +17,7 @@ export const description =
   "Open (and, when opted in, merge) an ISSUE-LESS fix PR into the base branch (e.g. develop) — the mirror of promote_branch, which does the base→protected promotion. " +
   "Use this for a small fix that doesn't warrant its own issue (e.g. review-comment cleanups) instead of dropping to raw `gh pr create` + `gh pr merge`: it is deliberately issue-less (no issue lookup, no Closes #N, no **Branch:** line required), authenticates with okffs's token, and — when the board is enabled — adds the PR to the Projects v2 board. " +
   "head defaults to the current branch; base defaults to OKFFS_BASE_BRANCH (or the repo default). It NEVER targets OKFFS_PROTECTED_BRANCH — that stays promote_branch + a manual, user-driven merge. " +
-  "Opening the PR is always safe and unconditional. The merge is then attempted under the SAME gates and opt-in as merge_pull_request: it only merges when OKFFS_AUTO_MERGE_BASE=true, OKFFS_PROTECTED_BRANCH is set, and the PR is green (all checks pass), conflict-free, not blocked/behind, and has every review thread resolved — using OKFFS_BASE_MERGE_METHOD. If merge is off or a gate isn't met, the PR is left open with an actionable reason (re-run once it's green, or merge with merge_pull_request({ pr_number })).";
+  "Opening the PR is always safe and unconditional. The merge is then attempted under the SAME gates and opt-in as merge_pull_request: it only merges when OKFFS_AUTO_MERGE_BASE=true, OKFFS_PROTECTED_BRANCH is set, and the PR is green (all checks pass), conflict-free, not blocked/behind, and has every review thread resolved — using OKFFS_BASE_MERGE_METHOD. If merge is off or a gate isn't met, the PR is left open with an actionable reason (re-run once it's green, or merge it with merge_pull_request by passing pr_number set to that PR's number).";
 
 export const inputSchema = z.object({
   head: z
@@ -67,7 +67,7 @@ export async function handler(input: z.infer<typeof inputSchema>) {
 
   const commits = await getBranchCommits(head, base);
   if (commits.length === 0) {
-    return text(`Nothing to land — \`${head}\` has no commits ahead of \`${base}\`. Commit your fix first (e.g. commit_and_update).`);
+    return text(`Nothing to land — \`${head}\` has no commits ahead of \`${base}\`. Commit your fix first — this is an issue-less flow, so use raw git (\`git add -A && git commit\`); commit_and_update won't work here because it requires an issue number.`);
   }
 
   const title = `Fix into ${base}: ${head}`;
