@@ -158,6 +158,12 @@ When `OKFFS_IDENTIFIER` is set, a project-scoped prefix is inserted: `{issue-num
 - New tools won't appear in consumer repos until a new version is published to npm.
 - After any build change in the okffs repo, restart Claude Code or run `/mcp` to pick up the updated `dist/index.js`.
 
+## Testing
+
+- `npm test` runs the [`node:test`](https://nodejs.org/api/test.html) suite via the existing `tsx` loader (`node --import tsx --test "src/**/*.test.ts"`) — zero extra dependencies. Tests live beside the code they cover as `*.test.ts` and are excluded from the `tsc` build (`tsconfig.json`), so they never emit into `dist/` or ship to npm.
+- Coverage is currently a minimal baseline (started in #253: `parseCommaList` in `src/config.test.ts`). Prefer testing **pure-logic** functions (data transforms, parsing, inference, invariant checks) over the GitHub API-calling layer. Broader coverage is tracked as a follow-up.
+- CI does **not** yet gate on `npm test` — running it is a manual/local step for now.
+
 ## Codebase search
 
 This project uses [semble](https://github.com/MinishLab/semble) for semantic code search. The MCP server is registered at the user level (`~/.claude.json`) and a dedicated sub-agent is configured at `.claude/agents/semble-search.md`.
