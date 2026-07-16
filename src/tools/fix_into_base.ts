@@ -67,7 +67,7 @@ export async function handler(input: z.infer<typeof inputSchema>) {
 
   const commits = await getBranchCommits(head, base);
   if (commits.length === 0) {
-    return text(`Nothing to land — \`${head}\` has no commits ahead of \`${base}\`. Commit your fix first (e.g. commit_and_update).`);
+    return text(`Nothing to land — \`${head}\` has no commits ahead of \`${base}\`. Commit your fix first — this is an issue-less flow, so use raw git (\`git add -A && git commit\`); commit_and_update won't work here because it requires an issue number.`);
   }
 
   const title = `Fix into ${base}: ${head}`;
