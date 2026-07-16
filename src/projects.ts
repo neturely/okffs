@@ -339,56 +339,85 @@ export interface ProjectItemFields {
 }
 
 // Map of issue number → its board Status + project-native Priority/Effort, for
-// list_issues enrichment. Capped at the first 100 board items (matches
-// list_issues' own page size).
+// list_issues enrichment.
+//
+// Starts from THIS repo's issues (not the board's items) and reads each issue's
+// projectItems, keeping the one on our board — repo-scoped by construction, so a
+// foreign issue sharing a number can never enter the map (#257). Querying the
+// board directly (node(project).items) keys by number alone and, on a shared org
+// board, lets another repo's #N overwrite ours.
+//
+// first:100 + orderBy CREATED_AT desc mirrors listIssues (github.ts, REST
+// state=open&per_page=100, default sort created desc). Since REST's page is
+// diluted by PRs (filtered client-side) while repository.issues excludes them,
+// this is a superset of what list_issues displays — every shown issue is
+// covered without paginating.
 export async function getProjectFieldsByIssueNumber(): Promise<Map<number, ProjectItemFields>> {
   const projectId = requireProjectId();
   const data = await projectCall(() =>
     graphqlRequest<{
-      node: {
-        items: {
+      repository: {
+        issues: {
           nodes: Array<{
-            content: { number?: number } | null;
-            status: { name?: string } | null;
-            priority: { name?: string } | null;
-            effort: { name?: string } | null;
+            number: number;
+            projectItems: {
+              nodes: Array<{
+                project: { id: string };
+                status: { name?: string } | null;
+                priority: { name?: string } | null;
+                effort: { name?: string } | null;
+              }>;
+              pageInfo: { hasNextPage: boolean };
+            };
           }>;
         };
       } | null;
     }>(
-      `query($project:ID!){
-        node(id:$project){
-          ... on ProjectV2 {
-            items(first:100){
-              nodes{
-                content{ ... on Issue { number } }
-                status:fieldValueByName(name:"Status"){
-                  ... on ProjectV2ItemFieldSingleSelectValue { name }
+      `query($owner:String!,$repo:String!){
+        repository(owner:$owner,name:$repo){
+          issues(first:100,states:OPEN,orderBy:{field:CREATED_AT,direction:DESC}){
+            nodes{
+              number
+              projectItems(first:10){
+                nodes{
+                  project{ id }
+                  status:fieldValueByName(name:"Status"){
+                    ... on ProjectV2ItemFieldSingleSelectValue { name }
+                  }
+                  priority:fieldValueByName(name:"Priority"){
+                    ... on ProjectV2ItemFieldSingleSelectValue { name }
+                  }
+                  effort:fieldValueByName(name:"Effort"){
+                    ... on ProjectV2ItemFieldSingleSelectValue { name }
+                  }
                 }
-                priority:fieldValueByName(name:"Priority"){
-                  ... on ProjectV2ItemFieldSingleSelectValue { name }
-                }
-                effort:fieldValueByName(name:"Effort"){
-                  ... on ProjectV2ItemFieldSingleSelectValue { name }
-                }
+                pageInfo{ hasNextPage }
               }
             }
           }
         }
       }`,
-      { project: projectId }
+      { owner, repo }
     )
   );
 
   const result = new Map<number, ProjectItemFields>();
-  for (const item of data.node?.items.nodes ?? []) {
-    const number = item.content?.number;
-    if (number == null) continue;
+  for (const issue of data.repository?.issues.nodes ?? []) {
+    // Unrealistic (an issue on >10 boards), but announce it rather than silently
+    // dropping the board we didn't page to.
+    if (issue.projectItems.pageInfo.hasNextPage) {
+      console.warn(
+        `[okffs] Issue #${issue.number} is on more than 10 project boards; ` +
+          "only the first 10 were checked for board fields."
+      );
+    }
+    const item = issue.projectItems.nodes.find((n) => n.project.id === projectId);
+    if (!item) continue;
     const fields: ProjectItemFields = {};
     if (item.status?.name) fields.status = item.status.name;
     if (item.priority?.name) fields.priority = item.priority.name;
     if (item.effort?.name) fields.effort = item.effort.name;
-    if (fields.status || fields.priority || fields.effort) result.set(number, fields);
+    if (fields.status || fields.priority || fields.effort) result.set(issue.number, fields);
   }
   return result;
 }
