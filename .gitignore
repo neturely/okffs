@@ -45,3 +45,11 @@ Thumbs.db
 
 # GitHub CLI / tool local state (never commit or publish)
 .local/
+# env files — never commit (any variant or backup)
+.env
+.env.*
+*.env
+*.env.bak
+!.env.example
+!.env.sample
+!.env-example
