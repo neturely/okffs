@@ -46,6 +46,10 @@ export function buildBannerInfo(
   if (isTrue(values.OKFFS_UPDATE_GUIDANCE)) features.push("guidance sync");
   if (isTrue(values.OKFFS_CLASSIC_PAT)) features.push("classic PAT (org Issue Fields)");
   if (isTrue(values.OKFFS_PROMOTION_AUTO_REVIEW)) features.push("auto-request promotion reviewers");
+  if (isTrue(values.OKFFS_AUTO_MERGE_PROTECTED)) features.push("auto-merge promotion into protected (re-run)");
+  if (isTrue(values.OKFFS_TAG_RELEASE)) features.push("tag releases after merge");
+  if (values.OKFFS_APPS) features.push(`multisite apps: ${values.OKFFS_APPS}`);
+  if (values.OKFFS_APP) features.push(`this app: ${values.OKFFS_APP}`);
   if (isOff(values.OKFFS_INFER_PRIORITY) || isOff(values.OKFFS_INFER_EFFORT) || isOff(values.OKFFS_INFER_TYPE)) {
     features.push("some inference disabled");
   }

@@ -1,3 +1,4 @@
+import { isEpicType, issueTypeName, epicToolRefusal } from "../epic.js";
 import { z } from "zod";
 import {
   getIssue,
@@ -41,6 +42,13 @@ export async function handler(input: z.infer<typeof inputSchema>) {
   // explicit `branch`, or infer it from the current git branch when it follows the
   // {issue-number}-… convention, then backfill the **Branch:** line so later okffs
   // calls resolve it automatically (#173).
+  // An Epic has no branch by design (#323) — refuse with a pointer to the
+  // children rather than inferring a branch from whatever is checked out. An
+  // explicit `branch` still wins, for the rare deliberate case.
+  if (!branchName && !input.branch && isEpicType(issueTypeName(issue.type))) {
+    return { content: [{ type: "text" as const, text: epicToolRefusal("create_pull_request", input.issue_number) }] };
+  }
+
   if (!branchName) {
     const current = currentBranch();
     const inferred = current && current.startsWith(`${input.issue_number}-`) ? current : null;

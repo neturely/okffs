@@ -5,6 +5,24 @@ See [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-09-18
+**Multisite.** okffs now supports several apps in one repository — e.g. `finance/` and `health/` — sharing one issue tracker, board, branches and token while each keeps its own version, changelog, fragments, tags and release line. Alongside it, the promotion flow can now be fully handled: after the gate PR's review lands, a `promote_branch` re-run merges it and tags the release, each step an explicit opt-in. Single-site repos are unaffected — with `OKFFS_APP` / `OKFFS_APPS` unset, every path behaves exactly as before.
+
+### Added
+- **Multisite (multi-app monorepo) support** ([#306](https://github.com/neturely/okffs/issues/306)): `OKFFS_APPS=finance,health` in the git-root `.env` registers the apps; each app directory has its own `.env` with `OKFFS_APP=<name>` that inherits the root's (closer file wins, [#308](https://github.com/neturely/okffs/issues/308)). With an app set, tags are `{app}-X.Y.Z` (no `v`), release branches `release/{app}-X.Y.Z`, the app name is always an issue label and the default branch identifier, and the changelog, fragments and version file resolve under the app directory. `create_issue`, `plan` and `create_issues_from_list` take a per-call `app` override validated against the registry; `list_issues` shows `app:` per issue; startup warnings cover app/registry mismatches and pending root fragments that no app release would assemble (migration) ([#309](https://github.com/neturely/okffs/issues/309))
+- `VERSION`-file versioning: when a repo (or app) has no `package.json`, `prepare_release` bumps a plain `VERSION` file, creating it on the first release with a warning; `package-lock.json` is bumped only when present ([#307](https://github.com/neturely/okffs/issues/307))
+- `OKFFS_TAG_RELEASE=true`: after you merge a promotion PR, a `promote_branch` re-run tags the release(s) it carried on the merge commit — `vX.Y.Z`, or one `{app}-X.Y.Z` per app whose version changed in that promotion. Idempotent; refuses (and says why) when the tag exists elsewhere or the target tip has moved past the merge commit ([#310](https://github.com/neturely/okffs/issues/310))
+- `OKFFS_AUTO_MERGE_PROTECTED=true`: a `promote_branch` re-run over an existing gate PR merges it into the protected branch once every gate passes — open, non-draft, conflict-free, all statuses and check runs green, **no pending requested review** (e.g. Copilot still running), every thread resolved — using `OKFFS_PROTECTED_MERGE_METHOD`; with `OKFFS_TAG_RELEASE` it then tags in the same call. The gates are shared with `merge_pull_request` (`src/pr_gates.ts`), which itself is unchanged and still never merges the protected branch ([#311](https://github.com/neturely/okffs/issues/311))
+- Promotion PRs list the releases they carry: a `## Releases in this promotion` section (and a response note) names each app whose version differs between head and base, with the tag the merge will yield ([#312](https://github.com/neturely/okffs/issues/312))
+- Setup for multisite: `okffs setup` offers to write each registry app's `.env`, switches to a site mode when run inside an app directory, and — like the `configure` tool (`app: "<name>"`) — makes sure `.gitignore` ignores `.env` at every depth, since an anchored `/.env` would leave `finance/.env` committable. New manifest keys: `OKFFS_APPS`, `OKFFS_APP`, `OKFFS_TAG_RELEASE`, `OKFFS_AUTO_MERGE_PROTECTED` ([#313](https://github.com/neturely/okffs/issues/313))
+
+### Changed
+- Autopilot: an explicit env opt-in now counts as consent and is never re-asked — `OKFFS_PROMOTION_AUTO_REVIEW` (the billable Copilot review is your own GitHub billing choice), `OKFFS_AUTO_MERGE_PROTECTED`, `OKFFS_TAG_RELEASE`. Correctness stops (failing check, pending review, unresolved thread, moved tip) are never overridden by a flag ([#311](https://github.com/neturely/okffs/issues/311))
+- `.env` loading: the working directory's `.env` is loaded first and the enclosing git root's underneath it; when they are the same file (every single-site repo) it is loaded once, exactly as before. Nothing is written to stdout ([#308](https://github.com/neturely/okffs/issues/308))
+- Release paths (changelog, fragments, version file, tag prefix, release branch) are resolved through one app-descriptor seam (`src/apps.ts`) whose single-site descriptor reproduces the previous layout byte for byte ([#307](https://github.com/neturely/okffs/issues/307))
+### Fixed
+- Epic issues no longer get a branch, **Branch:** line, init commit or draft PR — a draft PR's `Closes #N` could close the epic on merge while its children were still open. `create_issue`, `plan` and `create_issues_from_list` skip them for an `Epic` type; `commit_and_update` / `create_pull_request` on an epic point at its children instead of erroring ([#323](https://github.com/neturely/okffs/issues/323))
+
 ## [0.12.0] - 2026-08-21
 ### Added
 - Promotion-PR review feedback is surfaced proactively: re-running `promote_branch` on an existing gate PR reports its unresolved review threads (count + reviewers + the `address_pr_review` loop to run) without re-requesting the billable review, and `list_issues` prints a "Release gate" header when the open base→protected PR has unresolved threads — even with zero open issues. Pure summarization in `src/review_gate.ts` ([#302](https://github.com/neturely/okffs/issues/302))
@@ -194,7 +212,8 @@ See [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `create_pull_request` commits the updated CHANGELOG onto the branch and pushes the branch before opening the PR, with non-blocking error handling ([#38](https://github.com/2b9sa2owa/okffs/issues/38)).
 - All git operations now run via `execFileSync` with argument arrays (no shell), removing command-injection risk from branch names and commit hints; tools also checkout the target branch before committing/pushing and restore the original branch afterward.
 
-[Unreleased]: https://github.com/neturely/okffs/compare/v0.12.0...HEAD
+[Unreleased]: https://github.com/neturely/okffs/compare/v0.13.0...HEAD
+[0.13.0]: https://github.com/neturely/okffs/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/neturely/okffs/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/neturely/okffs/compare/v0.10.2...v0.11.0
 [0.10.2]: https://github.com/neturely/okffs/compare/v0.10.1...v0.10.2

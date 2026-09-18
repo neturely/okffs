@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { addIssueComment, getIssue, extractBranchFromBody } from "../github.js";
+import { isEpicType, issueTypeName, epicToolRefusal } from "../epic.js";
 import { git, gitOutput, currentBranch } from "../git.js";
 import { renderAutopilotDecisions, AUTOPILOT_DECISIONS_DESCRIPTION } from "../autopilot.js";
 import { matchSecretPaths, buildAutoCommitMessage, splitCommitMessage } from "../staging.js";
@@ -70,6 +71,9 @@ export async function handler(input: z.infer<typeof inputSchema>) {
   // on would commit onto whatever branch happens to be checked out and never
   // push. Refuse early instead (PR #277 review).
   if (!branchName) {
+    if (isEpicType(issueTypeName(issue.type))) {
+      return { content: [{ type: "text" as const, text: epicToolRefusal("commit_and_update", input.issue_number) }] };
+    }
     return {
       content: [{
         type: "text" as const,
