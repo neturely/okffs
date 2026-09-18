@@ -2,6 +2,7 @@ import fs from "fs";
 import path from "path";
 import { config } from "./config.js";
 import { owner, repo } from "./github.js";
+import { resolveApp } from "./apps.js";
 
 // Scoped to: CHANGELOG.md (always) and SECURITY.md (security-related changes only).
 // Entries are title-based one-liners — concise and complete, so nothing needs
@@ -79,7 +80,8 @@ export function rollChangelogForRelease(
   changelog: string,
   version: string,
   prevVersion: string,
-  date: string
+  date: string,
+  tagPrefix = "v"
 ): string {
   const marker = "## [Unreleased]";
   const idx = changelog.indexOf(marker);
@@ -96,8 +98,8 @@ export function rollChangelogForRelease(
 
   // Update the compare links at the bottom.
   const repoUrl = `https://github.com/${owner}/${repo}`;
-  const unreleasedLink = `[Unreleased]: ${repoUrl}/compare/v${version}...HEAD`;
-  const versionLink = `[${version}]: ${repoUrl}/compare/v${prevVersion}...v${version}`;
+  const unreleasedLink = `[Unreleased]: ${repoUrl}/compare/${tagPrefix}${version}...HEAD`;
+  const versionLink = `[${version}]: ${repoUrl}/compare/${tagPrefix}${prevVersion}...${tagPrefix}${version}`;
   const versionRefExists = new RegExp(`^\\[${version.replace(/\./g, "\\.")}\\]:`, "m").test(result);
 
   if (/^\[Unreleased\]:/m.test(result)) {
@@ -165,7 +167,9 @@ function insertChangelogEntry(changelog: string, type: string, entry: string): s
 // under .changes/unreleased/ — those never collide — and prepare_release
 // assembles them into CHANGELOG.md at release time (changesets/towncrier style).
 
-const FRAGMENT_DIR = path.join(".changes", "unreleased");
+// The default fragment directory comes from the app descriptor seam (#307);
+// prepare_release passes the active app's dir explicitly. Same value today.
+const FRAGMENT_DIR = resolveApp().fragmentsDir;
 
 // Kebab-case the first few words of a title/summary for a stable fragment name.
 function slugify(text: string, maxWords = 6): string {
@@ -205,8 +209,8 @@ export interface FragmentFold {
 // and the fragment paths that were consumed (so the caller can `git rm` them).
 // A no-op when the directory is absent or empty — keeps prepare_release working
 // on repos that never used fragments.
-export function foldFragmentsIntoChangelog(changelog: string, base: string): FragmentFold {
-  const dir = path.join(base, FRAGMENT_DIR);
+export function foldFragmentsIntoChangelog(changelog: string, base: string, fragmentsDir: string = FRAGMENT_DIR): FragmentFold {
+  const dir = path.join(base, fragmentsDir);
   let files: string[];
   try {
     files = fs.readdirSync(dir).filter((f) => f.endsWith(".md")).sort();
@@ -232,7 +236,7 @@ export function foldFragmentsIntoChangelog(changelog: string, base: string): Fra
       .trim();
     if (!entry) continue;
     result = insertChangelogEntry(result, type, entry);
-    consumed.push(path.join(FRAGMENT_DIR, f));
+    consumed.push(path.join(fragmentsDir, f));
   }
   return { changelog: result, consumed, count: consumed.length };
 }
