@@ -311,6 +311,20 @@ export const SECTIONS: Section[] = [
         description: "Auto-request the reviewers above on the gate PR. COST: a billable reviewer (Copilot) is charged per new PR.",
         default: "false",
       },
+      {
+        key: "OKFFS_TAG_RELEASE",
+        kind: "boolean",
+        description:
+          "After YOU merge the promotion PR, a promote_branch re-run tags the release(s) it carried on the merge commit (vX.Y.Z, or {app}-X.Y.Z per app). IRREVERSIBLE: a tag usually triggers CI publishing.",
+        default: "false",
+      },
+      {
+        key: "OKFFS_AUTO_MERGE_PROTECTED",
+        kind: "boolean",
+        description:
+          "Let a promote_branch RE-RUN merge the gate PR into the protected branch once every gate passes (checks green, review landed, threads resolved). With OKFFS_TAG_RELEASE it then tags — the fully handled promotion. The ONLY way okffs merges the protected branch.",
+        default: "false",
+      },
     ],
   },
   {
@@ -325,8 +339,32 @@ export const SECTIONS: Section[] = [
     vars: [],
   },
   {
+    id: "multisite",
+    title: "10. Multisite (several apps in one repo)",
+    blurb:
+      "Apps like finance/ and health/ share the tracker, board, branches and token but get independent versions, changelogs, fragments and tags ({app}-X.Y.Z). Each app directory gets its own .env (OKFFS_APP) that inherits this root .env.",
+    gated: true,
+    gatePrompt: "Does this repo host several apps (e.g. finance/ and health/) with independent releases?",
+    vars: [
+      {
+        key: "OKFFS_APPS",
+        kind: "text",
+        description: "Comma-separated registry of every app directory at the repo root, e.g. finance,health. The wizard then offers to create each app's own .env.",
+        default: "",
+        placeholder: "finance,health",
+      },
+      {
+        key: "OKFFS_APP",
+        kind: "text",
+        description: "Only if the repo ROOT is itself one of the apps: its name. Leave blank when apps live only in subdirectories (each subdirectory's .env names its own app).",
+        default: "",
+        placeholder: "",
+      },
+    ],
+  },
+  {
     id: "misc",
-    title: "10. Misc",
+    title: "11. Misc",
     gated: true,
     gatePrompt: "Configure misc options (metadata tip)?",
     vars: [

@@ -6,8 +6,13 @@
 //                          explicit "reconfigure everything" opt-in
 // then: regenerate .env cleanly → run a non-fatal sanity test → print the banner.
 
-import { join } from "node:path";
+import { join, basename, relative } from "node:path";
+import { existsSync, statSync, readFileSync, writeFileSync } from "node:fs";
 import * as p from "@clack/prompts";
+
+import { findGitRoot } from "../env_load.js";
+import { isValidAppName } from "../apps.js";
+import { gitignoreCoversEnv, gitignoreAnchoredEnvOnly, appendEnvIgnore } from "./gitignore.js";
 
 import { SECTIONS, QUICK_KEYS, findVar, type Section, type VarSpec } from "./manifest.js";
 import { parseEnv, serializeEnv, writeEnv, type Collected, type Entry } from "./env.js";
@@ -31,6 +36,12 @@ export async function runSetup(argv: string[]): Promise<number> {
   const parsed = parseEnv(envPath);
 
   p.intro("okffs setup");
+
+  // Multisite site mode (#313): running inside an app directory of a repo whose
+  // root already has an okffs .env configures THIS directory's .env — just the
+  // app name (everything else is inherited from the root, closer file wins).
+  const site = detectSite(process.cwd());
+  if (site) return runSiteSetup(site, envPath, parsed);
 
   p.note(
     [
@@ -73,6 +84,11 @@ export async function runSetup(argv: string[]): Promise<number> {
   } else {
     await walkSections(collected, parsed, mode);
   }
+
+  // Multisite (#313): offer an .env for every registered app directory that
+  // doesn't have one yet — runs on every pass, so a sync run picks up apps
+  // added to OKFFS_APPS since the last time.
+  await offerSiteEnvs(valuesView(collected));
 
   // Confirm before writing to an existing file. Only okffs's own marked block is
   // rewritten; the user's other variables and comments are preserved verbatim.
@@ -238,22 +254,26 @@ async function askVar(spec: VarSpec, current: Entry | undefined): Promise<Entry 
 
 // ── Finish: write, sanity, banner ─────────────────────────────────────────────
 
-async function finish(collected: Collected, parsed: ReturnType<typeof parseEnv>, envPath: string, rewrote: boolean): Promise<void> {
+async function finish(collected: Collected, parsed: ReturnType<typeof parseEnv>, envPath: string, rewrote: boolean, inherited: Record<string, string> | null = null): Promise<void> {
   if (rewrote) {
     const contents = serializeEnv(collected, parsed.preamble, parsed.postamble, packageVersion());
     writeEnv(envPath, contents);
     p.log.success(`Wrote ${envPath}`);
   }
 
+  // .env files hold tokens: make sure the repo ignores them at EVERY depth (a
+  // site's finance/.env too), not just an anchored /.env at the root (#313).
+  await ensureGitignore(findGitRoot(process.cwd()) ?? process.cwd());
+
   const spin = p.spinner();
   spin.start("Running sanity checks against GitHub");
-  const { results, resolved } = await runSanity(valuesView(collected));
+  const { results, resolved } = await runSanity({ ...(inherited ?? {}), ...valuesView(collected) });
   spin.stop("Sanity checks complete");
 
   const lines = results.map((r) => `${icon(r.status)}  ${r.label}: ${r.detail}`);
   p.note(lines.join("\n") || "no checks run", "Sanity test (non-blocking)");
 
-  const info = buildBannerInfo(valuesView(collected), resolved);
+  const info = buildBannerInfo({ ...(inherited ?? {}), ...valuesView(collected) }, resolved);
   p.note(renderBanner(info), "Current configuration");
 
   const failed = results.some((r) => r.status === "fail");
@@ -264,6 +284,140 @@ async function finish(collected: Collected, parsed: ReturnType<typeof parseEnv>,
     "Next: add okffs to your project's .mcp.json, then start Claude Code.\n" +
       "  Quick start guide: https://github.com/neturely/okffs#quick-start"
   );
+}
+
+// ── Multisite (#313) ──────────────────────────────────────────────────────────
+
+interface SiteContext {
+  gitRoot: string;
+  rootEnvPath: string;
+  rootValues: Record<string, string>;
+  dirName: string;
+}
+
+// Site mode: cwd is below the git root AND the root has an okffs .env (any
+// okffs var). Otherwise this is the (root) wizard as usual.
+function detectSite(cwd: string): SiteContext | null {
+  const gitRoot = findGitRoot(cwd);
+  if (!gitRoot || gitRoot === cwd) return null;
+  const rootEnvPath = join(gitRoot, ".env");
+  const rootParsed = parseEnv(rootEnvPath);
+  if (!rootParsed.exists || rootParsed.known.size === 0) return null;
+  return { gitRoot, rootEnvPath, rootValues: rootParsed.values, dirName: basename(cwd) };
+}
+
+async function runSiteSetup(site: SiteContext, envPath: string, parsed: ReturnType<typeof parseEnv>): Promise<number> {
+  const rel = relative(site.gitRoot, process.cwd());
+  p.note(
+    [
+      `This directory (${rel}/) sits inside a repo whose root .env is already`,
+      `configured for okffs. A site .env here only needs the app's name —`,
+      `token, board, branches and merge settings are inherited from the root`,
+      `.env (a value set here wins over the root's).`,
+      ``,
+      `The app name becomes the tag prefix ({app}-X.Y.Z), the release-branch`,
+      `prefix, the default branch identifier and an issue label.`,
+    ].join("\n"),
+    "Multisite: app directory"
+  );
+
+  const registry = (site.rootValues.OKFFS_APPS ?? "").split(",").map((a) => a.trim().toLowerCase()).filter(Boolean);
+  const current = parsed.values.OKFFS_APP;
+  const suggested = current || (isValidAppName(site.dirName) ? site.dirName : "");
+  let app = "";
+  for (;;) {
+    const val = guard(
+      await p.text({
+        message: `OKFFS_APP — the app this directory is${registry.length ? ` (root OKFFS_APPS: ${registry.join(", ")})` : ""}`,
+        placeholder: suggested || "finance",
+        initialValue: suggested || undefined,
+        defaultValue: suggested,
+      })
+    );
+    app = (val ?? "").trim().toLowerCase();
+    if (!isValidAppName(app)) {
+      p.log.warn("Use lowercase letters, digits and hyphens (e.g. finance).");
+      continue;
+    }
+    if (registry.length > 0 && !registry.includes(app)) {
+      const go = guard(await p.confirm({ message: `"${app}" is not in the root's OKFFS_APPS (${registry.join(", ")}). Use it anyway? (Add it to OKFFS_APPS in the root .env afterwards.)`, initialValue: false }));
+      if (!go) continue;
+    }
+    break;
+  }
+
+  const collected: Collected = {};
+  for (const key of parsed.known) {
+    const v = parsed.values[key];
+    collected[key] = v !== undefined && v !== "" ? { state: "set", value: v } : { state: "declined", value: "" };
+  }
+  collected.OKFFS_APP = { state: "set", value: app };
+
+  const go = guard(await p.confirm({ message: `Write ${envPath} with OKFFS_APP=${app}?${parsed.exists ? " (only okffs's marked block is rewritten)" : ""}`, initialValue: true }));
+  if (!go) {
+    p.cancel("No changes written.");
+    return 1;
+  }
+  await finish(collected, parsed, envPath, true, site.rootValues);
+  return 0;
+}
+
+// From the root wizard: create `{app}/.env` (OKFFS_APP={app}) for each registry
+// app directory that exists and isn't configured yet.
+async function offerSiteEnvs(values: Record<string, string>): Promise<void> {
+  const apps = (values.OKFFS_APPS ?? "").split(",").map((a) => a.trim().toLowerCase()).filter(Boolean);
+  if (apps.length === 0) return;
+  const rootApp = (values.OKFFS_APP ?? "").trim().toLowerCase();
+  for (const app of apps) {
+    if (app === rootApp) continue; // the root itself
+    if (!isValidAppName(app)) {
+      p.log.warn(`OKFFS_APPS entry "${app}" is not a valid app name (lowercase letters, digits, hyphens) — skipped.`);
+      continue;
+    }
+    const dir = join(process.cwd(), app);
+    if (!existsSync(dir) || !statSync(dir).isDirectory()) {
+      p.log.warn(`App "${app}": no ${app}/ directory at the repo root yet — create it, then run \`okffs setup\` inside it.`);
+      continue;
+    }
+    const sitePath = join(dir, ".env");
+    const siteParsed = parseEnv(sitePath);
+    if (siteParsed.values.OKFFS_APP === app) {
+      p.log.info(`App "${app}": ${app}/.env already sets OKFFS_APP=${app}.`);
+      continue;
+    }
+    const create = guard(await p.confirm({ message: `App "${app}": write ${app}/.env with OKFFS_APP=${app}? (inherits this root .env)`, initialValue: true }));
+    if (!create) continue;
+    const collected: Collected = {};
+    for (const key of siteParsed.known) {
+      const v = siteParsed.values[key];
+      collected[key] = v !== undefined && v !== "" ? { state: "set", value: v } : { state: "declined", value: "" };
+    }
+    collected.OKFFS_APP = { state: "set", value: app };
+    writeEnv(sitePath, serializeEnv(collected, siteParsed.preamble, siteParsed.postamble, packageVersion()));
+    p.log.success(`Wrote ${sitePath}`);
+  }
+}
+
+// Offer to add a depth-agnostic `.env` rule to the repo's .gitignore.
+async function ensureGitignore(root: string): Promise<void> {
+  const giPath = join(root, ".gitignore");
+  let content = "";
+  try {
+    content = readFileSync(giPath, "utf8");
+  } catch {
+    content = "";
+  }
+  if (gitignoreCoversEnv(content)) return;
+  const why = gitignoreAnchoredEnvOnly(content)
+    ? `${giPath} ignores only the root /.env (anchored) — an app directory's .env would NOT be ignored.`
+    : `${giPath} does not ignore .env files.`;
+  const add = guard(await p.confirm({ message: `${why} Add a \`.env\` rule that applies at every depth?`, initialValue: true }));
+  if (!add) {
+    p.log.warn("Skipped — make sure every .env (root and app directories) is git-ignored; they hold your token.");
+    return;
+  }
+  writeFileSync(giPath, appendEnvIgnore(content), "utf8");
+  p.log.success(`Updated ${giPath}`);
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
