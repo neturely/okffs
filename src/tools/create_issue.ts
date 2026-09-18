@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { createIssue, updateIssueBody, getDefaultBranch, getRef, createBranch, buildBranchName, createDraftPullRequest, summarizeGitHubError } from "../github.js";
 import { config } from "../config.js";
+import { issueAppFor } from "../multisite.js";
 import { pushEmptyInitCommit } from "../git.js";
 import {
   boardAutoAddEnabled,
@@ -85,6 +86,9 @@ export const inputSchema = z.object({
   assignees: z.array(z.string()).optional().describe("GitHub usernames to assign"),
   labels: z.array(z.string()).optional().describe("Labels to apply e.g. bug, feature"),
   milestone: z.number().int().optional().describe("Milestone number to assign"),
+  app: z.string().optional().describe(
+    "Optional multisite app this issue belongs to (one of OKFFS_APPS, e.g. finance) — adds the app label and uses the app as the branch identifier unless OKFFS_IDENTIFIER is set explicitly. Defaults to the session's OKFFS_APP; single-site repos never need it."
+  ),
   priority: z.string().optional().describe(
     "Optional Project board Priority (e.g. Urgent, High, Medium, Low) — matched against the board's Priority options (project-native field, or a GitHub org Issue Field when OKFFS_CLASSIC_PAT is set). Only applied when OKFFS_PROJECT_AUTO_ADD=true and a Priority field exists. If omitted, OKFFS_DEFAULT_PRIORITY is used when set."
   ),
@@ -103,9 +107,15 @@ export async function handler(input: z.infer<typeof inputSchema>) {
   }
   const issueBody = bodyRes.body;
 
+  // Multisite (#309): per-call `app` override, else the session's OKFFS_APP.
+  const issueApp = issueAppFor(input.app);
+  if (issueApp.error) {
+    return { content: [{ type: "text" as const, text: issueApp.error }] };
+  }
+
   const resolvedAssignees = input.assignees ?? config.defaultAssignees;
   const resolvedLabels = [
-    ...new Set([...(input.labels ?? []), ...config.defaultLabels])
+    ...new Set([...(input.labels ?? []), ...config.defaultLabels, ...(issueApp.label ? [issueApp.label] : [])])
   ];
   // Fall back to OKFFS_DEFAULT_PRIORITY / OKFFS_DEFAULT_EFFORT / OKFFS_DEFAULT_TYPE
   // when not given.
@@ -115,7 +125,7 @@ export async function handler(input: z.infer<typeof inputSchema>) {
 
   const issue = await createIssue(input.title, issueBody, resolvedAssignees, resolvedLabels, input.milestone);
 
-  const branchName = buildBranchName(issue.number, input.title);
+  const branchName = buildBranchName(issue.number, input.title, issueApp.identifier);
 
   const defaultBranch = await getDefaultBranch();
   const ref = await getRef(defaultBranch);
@@ -211,6 +221,10 @@ export async function handler(input: z.infer<typeof inputSchema>) {
   if (resolvedLabels.length > 0) {
     const source = input.labels ? "" : " (default)";
     lines.push(`Labels: ${resolvedLabels.join(", ")}${source}`);
+  }
+
+  if (issueApp.app) {
+    lines.push(`App: ${issueApp.app}${input.app ? "" : " (OKFFS_APP)"}`);
   }
 
   if (typeOutcome) {
