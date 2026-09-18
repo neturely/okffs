@@ -8,7 +8,7 @@
 // The server is loaded via a DYNAMIC import so the CLI path never pulls in the
 // tool chain (→ github.ts), which resolves the token/owner/repo at import time
 // and throws when unconfigured — precisely the state `okffs setup` runs in.
-import "dotenv/config";
+import "./env_bootstrap.js";
 
 import { isCliInvocation, runCli } from "./cli/index.js";
 

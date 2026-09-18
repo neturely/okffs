@@ -10,6 +10,7 @@ import {
   summarizeGitHubError,
 } from "../github.js";
 import { config } from "../config.js";
+import { issueAppFor } from "../multisite.js";
 import { git, currentBranch } from "../git.js";
 import {
   boardAutoAddEnabled,
@@ -51,6 +52,7 @@ const taskSchema = z.object({
   body: z.string().describe("Issue body"),
   assignees: z.array(z.string()).optional().describe("GitHub usernames to assign"),
   labels: z.array(z.string()).optional().describe("Labels to apply to this issue"),
+  app: z.string().optional().describe("Optional multisite app this issue belongs to (one of OKFFS_APPS, e.g. finance) — adds the app label and uses the app as the branch identifier unless OKFFS_IDENTIFIER is set explicitly. Defaults to the session's OKFFS_APP; single-site repos never need it."),
   milestone: z.number().int().optional().describe("Milestone number to assign"),
   priority: z.string().optional().describe(
     "Optional Project board Priority (e.g. Urgent, High, Medium, Low). Only applied when OKFFS_PROJECT_AUTO_ADD=true; falls back to OKFFS_DEFAULT_PRIORITY when omitted."
@@ -150,10 +152,17 @@ export async function handler(input: z.infer<typeof inputSchema>) {
     typeOutcome: BoardFieldOutcome | null;
   }> = [];
 
+  // Multisite (#309): validate every per-task `app` before creating anything.
+  for (const [i, t] of input.tasks.entries()) {
+    const check = issueAppFor(t.app);
+    if (check.error) return { content: [{ type: "text" as const, text: `Task ${i + 1} ("${t.title}"): ${check.error}` }] };
+  }
+
   for (const [taskIndex, task] of input.tasks.entries()) {
     const taskBody = taskBodies[taskIndex];
     const resolvedAssignees = task.assignees ?? config.defaultAssignees;
-    const resolvedLabels = [...new Set([...(task.labels ?? []), ...config.defaultLabels])];
+    const taskApp = issueAppFor(task.app); // validated up front, before any creation
+    const resolvedLabels = [...new Set([...(task.labels ?? []), ...config.defaultLabels, ...(taskApp.label ? [taskApp.label] : [])])];
     const resolvedPriority = task.priority ?? config.defaultPriority;
     const resolvedEffort = task.effort ?? config.defaultEffort;
     const resolvedType = task.type ?? config.defaultType;
@@ -165,7 +174,7 @@ export async function handler(input: z.infer<typeof inputSchema>) {
       resolvedLabels,
       task.milestone
     );
-    const branchName = buildBranchName(issue.number, task.title);
+    const branchName = buildBranchName(issue.number, task.title, taskApp.identifier);
     await createBranch(branchName, ref.object.sha);
 
     const body = `${taskBody}\n\n**Branch:** \`${branchName}\``;

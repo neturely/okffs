@@ -13,6 +13,7 @@ import {
   type PullRequestSummary,
 } from "../github.js";
 import { config } from "../config.js";
+import { appFromLabels } from "../multisite.js";
 import { getProjectFieldsByIssueNumber, getOrgIssueFieldValuesByNumber } from "../projects.js";
 import { summarizeReviewThreads, renderReviewGateWarning } from "../review_gate.js";
 
@@ -155,6 +156,12 @@ export async function handler(_input: z.infer<typeof inputSchema>) {
     // object — no extra fetch. Absent on user repos / when the org defines none.
     if (issue.type) {
       lines.push(`    type: ${issue.type}`);
+    }
+
+    // Multisite (#309): which app the issue belongs to, by its app label.
+    const app = appFromLabels((issue as { labels?: unknown }).labels, config.apps.length ? config.apps : config.app ? [config.app] : []);
+    if (app) {
+      lines.push(`    app: ${app}`);
     }
 
     // Relationships as a small tree under the issue.
