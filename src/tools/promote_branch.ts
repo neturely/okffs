@@ -13,6 +13,8 @@ import {
   createTag,
   getFileContentAtRef,
   getRef,
+  getReleaseByTag,
+  createRelease,
   getPullRequest,
   mergePullRequest,
   type PullRequestDetail,
@@ -20,6 +22,7 @@ import {
 import { verifyMergeable, prLabel } from "../pr_gates.js";
 import { decideTags, renderTagReport, type AppVersionProbe } from "../tagging.js";
 import { probeAppVersions } from "../app_versions.js";
+import { extractChangelogSection, releaseTitle, isPrereleaseVersion, releaseNotes } from "../release_notes.js";
 import { summarizeReleases, renderReleaseSection, renderReleaseNote } from "../release_summary.js";
 import { config } from "../config.js";
 import { addIssueToProject, getProjectMetadata, setProjectFieldValue } from "../projects.js";
@@ -281,7 +284,8 @@ async function tagMergedPromotion(head: string, base: string): Promise<string | 
     if (!merged || !merged.merge_commit_sha) return null;
     const mergeSha = merged.merge_commit_sha;
     const [parentSha, tip] = await Promise.all([getCommitParentSha(mergeSha), getRef(base)]);
-    const probes: AppVersionProbe[] = (await probeAppVersions(mergeSha, parentSha)).map((p) => ({
+    const pairs = await probeAppVersions(mergeSha, parentSha);
+    const probes: AppVersionProbe[] = pairs.map((p) => ({
       name: p.name,
       tagPrefix: p.tagPrefix,
       versionAtMerge: p.versionAtA,
@@ -305,7 +309,56 @@ async function tagMergedPromotion(head: string, base: string): Promise<string | 
         failures.push({ tag: d.tag, error: msg });
       }
     }
-    return renderTagReport(merged.number, decisions, failures);
+    const report = renderTagReport(merged.number, decisions, failures);
+
+    // GitHub Release entry per tag (#337): for every tag that now points at the
+    // merge commit (just created, or already there), create the Release when
+    // none exists — notes from the app's CHANGELOG section at the merge commit.
+    // Idempotent, so a CI that also creates one (like okffs's publish.yml,
+    // which skips when it exists) never conflicts. Best-effort per tag.
+    const releaseLines: string[] = [];
+    for (const d of decisions) {
+      if (d.action !== "tag" && d.action !== "already") continue;
+      if (d.action === "tag" && failures.some((f) => f.tag === d.tag)) continue;
+      const version = probes.find((p) => p.name === d.app)?.versionAtMerge ?? d.tag.replace(/^.*?(\d+\.\d+\.\d+.*)$/, "$1");
+      try {
+        if (await getReleaseByTag(d.tag)) {
+          if (d.action === "tag") releaseLines.push(`📝 Release for ${d.tag} already exists.`);
+          continue;
+        }
+        const roots = pairs.find((p) => p.name === d.app)?.roots ?? [""];
+        let section: string | null = null;
+        for (const root of roots) {
+          const cl = await getFileContentAtRef(`${root ? `${root}/` : ""}CHANGELOG.md`, mergeSha);
+          section = cl ? extractChangelogSection(cl, version) : null;
+          if (section) break;
+        }
+        let rel: { html_url: string };
+        try {
+          rel = await createRelease({
+            tag: d.tag,
+            name: releaseTitle(d.app, version, d.tag),
+            body: releaseNotes(section, d.app, version),
+            prerelease: isPrereleaseVersion(version),
+          });
+        } catch (err) {
+          // Race with tag-triggered CI that also creates the Release (e.g. this
+          // repo's publish.yml): created between our 404 and this POST → 422
+          // "already_exists". Re-fetch and treat as the idempotent success it is.
+          const msg = err instanceof Error ? err.message : String(err);
+          const existing = /already_exists|GitHub API error 422/.test(msg) ? await getReleaseByTag(d.tag) : null;
+          if (!existing) throw err;
+          releaseLines.push(`📝 Release for ${d.tag} was created concurrently (by CI): ${existing.html_url}`);
+          continue;
+        }
+        releaseLines.push(`📝 Release "${releaseTitle(d.app, version, d.tag)}" created: ${rel.html_url}${section ? "" : " (no changelog section found — fallback notes)"}`);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.warn(`[okffs] Failed to create the GitHub Release for ${d.tag}:`, msg);
+        releaseLines.push(`⚠️ Could not create the GitHub Release for ${d.tag}: ${msg} — create it by hand (the tag stands).`);
+      }
+    }
+    return [report, ...releaseLines].filter(Boolean).join("\n") || null;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.warn(`[okffs] Release tagging check failed:`, msg);

@@ -56,6 +56,8 @@ export async function versionAt(roots: string[], ref: string): Promise<string | 
 export interface AppVersionPair {
   name: string | null;
   tagPrefix: string;
+  /** Repo-relative roots probed for this app ("" = repo root). */
+  roots: string[];
   versionAtA: string | null;
   versionAtB: string | null;
 }
@@ -68,7 +70,7 @@ export async function probeAppVersions(refA: string, refB: string | null): Promi
       versionAt(app.roots, refA),
       refB ? versionAt(app.roots, refB) : Promise.resolve(null),
     ]);
-    out.push({ name: app.name, tagPrefix: app.tagPrefix, versionAtA, versionAtB });
+    out.push({ name: app.name, tagPrefix: app.tagPrefix, roots: app.roots, versionAtA, versionAtB });
   }
   return out;
 }

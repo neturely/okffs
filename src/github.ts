@@ -696,3 +696,23 @@ export async function getFileContentAtRef(filePath: string, ref: string): Promis
     throw err;
   }
 }
+
+// --- GitHub Releases (#337) --------------------------------------------------
+
+/** The release for a tag, or null when none exists. */
+export async function getReleaseByTag(tag: string): Promise<{ html_url: string } | null> {
+  try {
+    return await request<{ html_url: string }>(`/repos/${owner}/${repo}/releases/tags/${encodeURIComponent(tag)}`);
+  } catch (err) {
+    if (err instanceof Error && /GitHub API error 404/.test(err.message)) return null;
+    throw err;
+  }
+}
+
+/** Create a GitHub Release for an existing tag. */
+export async function createRelease(input: { tag: string; name: string; body: string; prerelease: boolean }): Promise<{ html_url: string }> {
+  return request(`/repos/${owner}/${repo}/releases`, {
+    method: "POST",
+    body: JSON.stringify({ tag_name: input.tag, name: input.name, body: input.body, prerelease: input.prerelease, make_latest: input.prerelease ? "false" : "true" }),
+  });
+}

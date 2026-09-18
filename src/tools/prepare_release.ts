@@ -1,7 +1,7 @@
 import { z } from "zod";
 import fs from "fs";
 import path from "path";
-import { createPullRequest, getDefaultBranch } from "../github.js";
+import { createPullRequest, getDefaultBranch, getTagSha } from "../github.js";
 import { getUnreleasedSection, rollChangelogForRelease, foldFragmentsIntoChangelog } from "../docs.js";
 import { bumpVersion } from "../version.js";
 import { readVersionSource, writeVersionBump } from "../version_source.js";
@@ -27,6 +27,18 @@ export const inputSchema = z.object({
 // bumpVersion lives in version.ts; the version source (package.json / VERSION)
 // in version_source.ts; paths, tag and branch names come from the app
 // descriptor in apps.ts (#307) — all pure/fs-only and unit-tested.
+
+// Whether `{prefix}{previous}` exists as a tag. False when there is no previous
+// version at all; on an API error assume it exists (a compare link is the
+// long-standing default and a wrong release-page link is the lesser harm).
+async function previousTagExists(hasPrevious: boolean, prevTag: string): Promise<boolean> {
+  if (!hasPrevious) return false;
+  try {
+    return (await getTagSha(prevTag)) !== null;
+  } catch {
+    return true;
+  }
+}
 
 export async function handler(input: z.infer<typeof inputSchema>) {
   // The app to release (#332): explicit `app`, else the session's OKFFS_APP;
@@ -84,6 +96,16 @@ export async function handler(input: z.infer<typeof inputSchema>) {
   const tag = tagName(app, targetVersion);
   const versionFiles = source.files.join(" + ");
 
+  // A compare range needs BOTH tags to exist. The previous version may have no
+  // tag under this prefix (an app's first prefixed release after v-tag history,
+  // a repo that never tagged, or no version file at all) — link the release
+  // page instead (#339). Probed here so the preview says so too. Best-effort:
+  // on an API error assume the tag exists.
+  const prevTagExists = await previousTagExists(source.kind !== "none", tagName(app, currentVersion));
+  const linkNote = prevTagExists
+    ? ""
+    : `\nℹ No \`${tagName(app, currentVersion)}\` tag exists, so the \`[${targetVersion}]\` section will link the release page instead of a compare range.`;
+
   if (!input.confirmed) {
     return {
       content: [{
@@ -93,7 +115,7 @@ export async function handler(input: z.infer<typeof inputSchema>) {
           `  current: ${currentVersion}  (${source.kind === "none" ? "no version file yet" : source.kind})\n` +
           `  target:  ${targetVersion}  (${how})\n` +
           `  branch:  ${branch}\n` +
-          `  tag:     ${tag} (after merge, by you)${versionNote}\n\n` +
+          `  tag:     ${tag} (after merge, by you)${versionNote}${linkNote}\n\n` +
           `Will: bump ${versionFiles}, roll ${clName} into "## [${targetVersion}]", ` +
           (previewFold.count > 0 ? `assemble ${previewFold.count} changelog fragment(s) and delete them, ` : ``) +
           `commit on ${branch}, and open a PR. It will NOT tag or publish.\n\n` +
@@ -137,7 +159,9 @@ export async function handler(input: z.infer<typeof inputSchema>) {
     const applyFold = foldFragmentsIntoChangelog(clRaw, base, app.fragmentsDir);
     // A first release (no version file yet) has no previous tag to compare
     // against — link the release tag instead of a broken compare range.
-    const prevForLink = baseSource.kind === "none" ? null : fromVersion;
+    // Re-probe against the base branch's version (it matched the preview's
+    // unless an explicit version was given) — see the preview note above (#339).
+    const prevForLink = (await previousTagExists(baseSource.kind !== "none", tagName(app, fromVersion))) ? fromVersion : null;
     const newCl = rollChangelogForRelease(applyFold.changelog, targetVersion, prevForLink, date, app.tagPrefix);
 
     bumpedFiles = writeVersionBump(base, baseSource, fromVersion, targetVersion);
@@ -220,7 +244,7 @@ export async function handler(input: z.infer<typeof inputSchema>) {
     content: [{
       type: "text" as const,
       text:
-        `Prepared release ${targetVersion} (from ${currentVersion}).${versionNote}\n` +
+        `Prepared release ${targetVersion} (from ${currentVersion}).${versionNote}${linkNote}\n` +
         `Branch: ${branch}\nPR: ${pr.html_url}\n\n` +
         `Next: review & merge the PR, then tag \`${tag}\` and push it — CI publishes to npm. ` +
         `prepare_release does not tag or publish.` +
