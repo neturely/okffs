@@ -628,3 +628,59 @@ export async function resolveReviewThread(threadId: string): Promise<void> {
     { id: threadId }
   );
 }
+
+// --- Release tagging (#310) -------------------------------------------------
+
+export interface MergedPullRequest {
+  number: number;
+  html_url: string;
+  merge_commit_sha: string | null;
+  merged_at: string | null;
+}
+
+/** The most recently merged PR for head→base, or null. */
+export async function getLatestMergedPullRequestForBranch(head: string, base: string): Promise<MergedPullRequest | null> {
+  const prs = await request<MergedPullRequest[]>(
+    `/repos/${owner}/${repo}/pulls?head=${owner}:${head}&base=${base}&state=closed&sort=updated&direction=desc&per_page=10`
+  );
+  return prs.find((p) => p.merged_at) ?? null;
+}
+
+/** First-parent sha of a commit (the base tip before a merge/squash landed), or null. */
+export async function getCommitParentSha(sha: string): Promise<string | null> {
+  const data = await request<{ parents?: Array<{ sha: string }> }>(`/repos/${owner}/${repo}/commits/${sha}`);
+  return data.parents?.[0]?.sha ?? null;
+}
+
+/** The sha a tag points at, or null when the tag doesn't exist. */
+export async function getTagSha(tag: string): Promise<string | null> {
+  try {
+    const ref = await request<{ object: { sha: string } }>(`/repos/${owner}/${repo}/git/ref/tags/${encodeURIComponent(tag)}`);
+    return ref.object.sha;
+  } catch (err) {
+    if (err instanceof Error && /GitHub API error 404/.test(err.message)) return null;
+    throw err;
+  }
+}
+
+/** Create a lightweight tag at `sha` (what `on: push: tags` CI triggers on). */
+export async function createTag(tag: string, sha: string): Promise<void> {
+  await request(`/repos/${owner}/${repo}/git/refs`, {
+    method: "POST",
+    body: JSON.stringify({ ref: `refs/tags/${tag}`, sha }),
+  });
+}
+
+/** A file's text content at a ref, or null when it doesn't exist there. */
+export async function getFileContentAtRef(filePath: string, ref: string): Promise<string | null> {
+  try {
+    const data = await request<{ content?: string; encoding?: string }>(
+      `/repos/${owner}/${repo}/contents/${filePath.split("/").map(encodeURIComponent).join("/")}?ref=${encodeURIComponent(ref)}`
+    );
+    if (!data.content) return null;
+    return Buffer.from(data.content, data.encoding === "base64" ? "base64" : "utf8").toString("utf8");
+  } catch (err) {
+    if (err instanceof Error && /GitHub API error 404/.test(err.message)) return null;
+    throw err;
+  }
+}

@@ -181,6 +181,13 @@ export const config = {
   // repeatedly. ⚠️ COST: enabling this with a billable reviewer incurs a charge per
   // newly-created gate PR. Re-review after new commits is a manual step. (#194)
   promotionAutoReview: process.env.OKFFS_PROMOTION_AUTO_REVIEW === "true",
+  // OKFFS_TAG_RELEASE=true — opt-in (#310): after the user merges a promotion PR,
+  // a promote_branch re-run tags the release(s) it carried — v1.2.0 (single-site)
+  // or finance-1.2.0 per app whose version changed in that promotion — on the
+  // PR's merge commit, via the git-refs API. The flag is the consent; the
+  // remaining stops are correctness (tip moved past the merge commit, tag exists
+  // elsewhere). ⚠️ A tag typically triggers CI publishing, which is irreversible.
+  tagRelease: process.env.OKFFS_TAG_RELEASE === "true",
 };
 
 // Warn once at startup if the feature is half-configured. Non-fatal: the
