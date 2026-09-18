@@ -123,7 +123,12 @@ function upgradeNudge(): string {
     const newKeys = allKeys().filter((k) => !parsed.known.has(k));
     if (newKeys.length === 0) return "";
     const from = stamp ? `from ${stamp} ` : "";
-    return `\n\nUPGRADE NUDGE: this repo's .env was configured ${from}with an older okffs; okffs ${version} has ${newKeys.length} config option(s) not set here. Once, offer to run the /okffs:setup prompt (sync) to review the new options — if the user declines, drop it, don't repeat.`;
+    // Headline for the 0.13 feature set (#314): surfaced once, alongside the nudge,
+    // until setup marks the multisite keys known/declined.
+    const headline = newKeys.includes("OKFFS_APPS")
+      ? ` New in okffs 0.13 — MULTISITE: several apps in one repo (e.g. finance/ and health/), each with its own version, changelog, tags and .env inheriting the root's; plus the fully handled promotion (OKFFS_AUTO_MERGE_PROTECTED + OKFFS_TAG_RELEASE). Single-site repos are unaffected. See the README's "Multisite" section.`
+      : "";
+    return `\n\nUPGRADE NUDGE: this repo's .env was configured ${from}with an older okffs; okffs ${version} has ${newKeys.length} config option(s) not set here.${headline} Once, offer to run the /okffs:setup prompt (sync) to review the new options — if the user declines, drop it, don't repeat.`;
   } catch {
     return "";
   }
