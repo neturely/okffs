@@ -78,6 +78,50 @@ export function appFromLabels(labels: unknown, apps: string[]): string | null {
   return apps.find((a) => names.includes(a)) ?? null;
 }
 
+export interface FragmentRootInput {
+  /** Session app (OKFFS_APP) — when set, the working directory IS the app root. */
+  sessionApp: string | null;
+  /** Registry (OKFFS_APPS). */
+  apps: string[];
+  /** The issue's labels (GitHub label objects or strings). */
+  labels: unknown;
+  /** Working directory, relative to the git root ("" at the root). */
+  cwdFromGitRoot: string;
+}
+
+export interface FragmentRoot {
+  /** Directory (relative to cwd) the fragment goes under; "." = cwd. */
+  root: string;
+  /** App the fragment was scoped to, or null (root/single-site). */
+  app: string | null;
+  /** How the app was chosen. */
+  source: "session" | "label" | "none";
+}
+
+/**
+ * Where an issue's changelog fragment belongs (#330). A session app wins (its
+ * cwd is the app root). Without one, a registered app named by the issue's
+ * label owns the fragment, at `{app}/` under the git root. Otherwise the cwd.
+ * Pure.
+ */
+export function fragmentRootFor(input: FragmentRootInput): FragmentRoot {
+  if (input.sessionApp) return { root: ".", app: input.sessionApp, source: "session" };
+  const app = appFromLabels(input.labels, input.apps);
+  if (!app) return { root: ".", app: null, source: "none" };
+  // Already inside that app's directory → stay put.
+  if (input.cwdFromGitRoot === app) return { root: ".", app, source: "label" };
+  // Path from cwd to `{gitRoot}/{app}`: climb out of cwd's depth, then descend.
+  const up = input.cwdFromGitRoot ? input.cwdFromGitRoot.split("/").filter(Boolean).map(() => "..") : [];
+  return { root: [...up, app].join("/"), app, source: "label" };
+}
+
+/** Config + fs wrapper for the tools. */
+export function fragmentRootForIssue(labels: unknown, cwd: string = process.cwd()): FragmentRoot {
+  const gitRoot = findGitRoot(cwd);
+  const cwdFromGitRoot = gitRoot ? path.relative(gitRoot, cwd).split(path.sep).join("/") : "";
+  return fragmentRootFor({ sessionApp: config.app, apps: config.apps, labels, cwdFromGitRoot });
+}
+
 export interface MultisiteState {
   app: string | null;
   apps: string[];
