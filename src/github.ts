@@ -434,6 +434,8 @@ export interface PullRequestDetail {
   html_url: string;
   head: { sha: string; ref: string };
   base: { ref: string };
+  /** Reviewers whose requested review has not been submitted yet. */
+  requested_reviewers?: Array<{ login: string }>;
 }
 
 export async function getPullRequest(prNumber: number): Promise<PullRequestDetail> {
