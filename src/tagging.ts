@@ -34,12 +34,15 @@ export type TagDecision =
 
 /** Parse a version out of a package.json text or a VERSION file text. */
 export function versionFromFiles(files: { packageJson?: string | null; versionFile?: string | null }): string | null {
+  // A package.json, once present, is the source of truth — a malformed one
+  // yields no version rather than silently falling back to VERSION, matching
+  // readVersionSource (which errors) so tagging can't diverge from prepare_release.
   if (files.packageJson) {
     try {
       const v = JSON.parse(files.packageJson).version;
-      if (typeof v === "string" && /^\d+\.\d+\.\d+/.test(v)) return v;
+      return typeof v === "string" && /^\d+\.\d+\.\d+/.test(v) ? v : null;
     } catch {
-      /* fall through to VERSION */
+      return null;
     }
   }
   if (files.versionFile) {
@@ -79,7 +82,7 @@ export function renderTagReport(prNumber: number, decisions: TagDecision[], fail
   for (const d of decisions) {
     if (d.action === "tag") {
       const failed = failures.find((f) => f.tag === d.tag);
-      lines.push(failed ? `⚠️ Could not create tag ${d.tag}: ${failed.error}` : `🏷️ Tagged ${d.tag} at ${d.sha.slice(0, 7)} (promotion PR #${prNumber} merged) — CI publishes on the tag.`);
+      lines.push(failed ? `⚠️ Could not create tag ${d.tag}: ${failed.error}` : `🏷️ Tagged ${d.tag} at ${d.sha.slice(0, 7)} (promotion PR #${prNumber} merged)${d.app ? ` — make sure your release workflow triggers on \`${d.tag.split("-")[0]}-*\` tags, not only \`v*\`` : " — CI publishes on the tag"}.`);
     } else if (d.action === "already") {
       lines.push(`🏷️ ${d.tag} already points at PR #${prNumber}'s merge commit — nothing to do.`);
     } else if (!d.silent) {

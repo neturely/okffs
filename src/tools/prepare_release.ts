@@ -173,7 +173,9 @@ export async function handler(input: z.infer<typeof inputSchema>) {
       ? [`- Assembled and removed ${fragmentsAssembled} changelog fragment(s) from \`${app.fragmentsDir}/\`.`]
       : []),
     ``,
-    `After merging, tag \`${tag}\` and push it — CI publishes on the tag. This PR does not tag or publish.`,
+    app.name
+      ? `After merging, tag \`${tag}\` and push it. Note: this is an app tag — CI publishes only if your release workflow triggers on \`${app.name}-*\` tags (a \`v*\`-only workflow will not). This PR does not tag or publish.`
+      : `After merging, tag \`${tag}\` and push it — CI publishes on the tag. This PR does not tag or publish.`,
   ].join("\n");
 
   let pr: { number: number; html_url: string };

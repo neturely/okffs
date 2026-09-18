@@ -9,6 +9,9 @@ test("depth-agnostic .env rules count; anchored, negated or commented ones do no
   assert.equal(gitignoreCoversEnv("/.env\n"), false);
   assert.equal(gitignoreCoversEnv("# .env\n"), false);
   assert.equal(gitignoreCoversEnv("!.env\n"), false);
+  assert.equal(gitignoreCoversEnv(".env\n!.env\n"), false); // later negation re-includes it
+  assert.equal(gitignoreCoversEnv(".env\n!finance/.env\n"), false);
+  assert.equal(gitignoreCoversEnv("!.env\n.env\n"), true); // negation BEFORE the rule is overridden
   assert.equal(gitignoreCoversEnv(""), false);
   assert.equal(gitignoreAnchoredEnvOnly("/.env\n"), true);
   assert.equal(gitignoreAnchoredEnvOnly(".env\n"), false);

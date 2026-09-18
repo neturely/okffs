@@ -436,6 +436,8 @@ export interface PullRequestDetail {
   base: { ref: string };
   /** Reviewers whose requested review has not been submitted yet. */
   requested_reviewers?: Array<{ login: string }>;
+  /** Teams whose requested review has not been submitted yet. */
+  requested_teams?: Array<{ slug: string }>;
 }
 
 export async function getPullRequest(prNumber: number): Promise<PullRequestDetail> {
@@ -643,7 +645,7 @@ export interface MergedPullRequest {
 /** The most recently merged PR for head→base, or null. */
 export async function getLatestMergedPullRequestForBranch(head: string, base: string): Promise<MergedPullRequest | null> {
   const prs = await request<MergedPullRequest[]>(
-    `/repos/${owner}/${repo}/pulls?head=${owner}:${head}&base=${base}&state=closed&sort=updated&direction=desc&per_page=10`
+    `/repos/${owner}/${repo}/pulls?head=${owner}:${head}&base=${base}&state=closed&sort=updated&direction=desc&per_page=100`
   );
   return prs.find((p) => p.merged_at) ?? null;
 }
@@ -654,10 +656,18 @@ export async function getCommitParentSha(sha: string): Promise<string | null> {
   return data.parents?.[0]?.sha ?? null;
 }
 
-/** The sha a tag points at, or null when the tag doesn't exist. */
+/**
+ * The COMMIT sha a tag points at, or null when the tag doesn't exist. An
+ * annotated tag's ref points at a tag object, which is dereferenced to its
+ * target commit so the idempotency check compares commits with commits.
+ */
 export async function getTagSha(tag: string): Promise<string | null> {
   try {
-    const ref = await request<{ object: { sha: string } }>(`/repos/${owner}/${repo}/git/ref/tags/${encodeURIComponent(tag)}`);
+    const ref = await request<{ object: { sha: string; type: string } }>(`/repos/${owner}/${repo}/git/ref/tags/${encodeURIComponent(tag)}`);
+    if (ref.object.type === "tag") {
+      const tagObj = await request<{ object: { sha: string } }>(`/repos/${owner}/${repo}/git/tags/${ref.object.sha}`);
+      return tagObj.object.sha;
+    }
     return ref.object.sha;
   } catch (err) {
     if (err instanceof Error && /GitHub API error 404/.test(err.message)) return null;

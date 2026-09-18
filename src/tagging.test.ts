@@ -11,7 +11,8 @@ const ctx = (over: Partial<{ mergeCommitSha: string; protectedTipSha: string; ex
 
 test("versionFromFiles prefers package.json, falls back to VERSION, rejects junk", () => {
   assert.equal(versionFromFiles({ packageJson: '{"version":"1.2.3"}', versionFile: "9.9.9\n" }), "1.2.3");
-  assert.equal(versionFromFiles({ packageJson: "not json", versionFile: "0.4.0\n" }), "0.4.0");
+  assert.equal(versionFromFiles({ packageJson: "not json", versionFile: "0.4.0\n" }), null); // package.json present ⇒ no VERSION fallback
+  assert.equal(versionFromFiles({ packageJson: null, versionFile: "0.4.0\n" }), "0.4.0");
   assert.equal(versionFromFiles({ versionFile: "v1.0\n" }), null);
   assert.equal(versionFromFiles({}), null);
 });

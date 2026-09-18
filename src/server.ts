@@ -6,6 +6,7 @@
 // so the MCP server's behaviour is unchanged.
 import { config } from "./config.js";
 import { collectMultisiteWarnings } from "./multisite.js";
+import { findGitRoot } from "./env_load.js";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -110,9 +111,14 @@ Rules: never merge, tag, or publish into OKFFS_PROTECTED_BRANCH autonomously UNL
 // stamps the current version and marks the new options known/declined).
 function upgradeNudge(): string {
   try {
+    // Look at the working directory's .env AND the inherited git-root .env
+    // (#308), so an app session doesn't miss keys configured at the root.
     const parsed = parseEnv(join(process.cwd(), ".env"));
-    if (!parsed.exists) return "";
-    const stamp = parsed.configuredVersion;
+    const gitRoot = findGitRoot(process.cwd());
+    const rootParsed = gitRoot && gitRoot !== process.cwd() ? parseEnv(join(gitRoot, ".env")) : null;
+    if (!parsed.exists && !rootParsed?.exists) return "";
+    for (const k of rootParsed?.known ?? []) parsed.known.add(k);
+    const stamp = parsed.configuredVersion ?? rootParsed?.configuredVersion ?? null;
     const configuredCount = allKeys().filter((k) => parsed.known.has(k)).length;
     // Only for repos that actually use okffs config (a stamp, or some okffs vars);
     // don't pester a .env that just isn't an okffs-configured repo.

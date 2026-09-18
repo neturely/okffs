@@ -96,7 +96,9 @@ export async function handler(input: z.infer<typeof inputSchema>) {
   // the release(s) carried by the LAST merged head→base PR when opted in. Runs
   // on every call so the natural "re-run promote_branch after merging" step is
   // enough; idempotent (an existing tag at the merge commit is a quiet no-op).
-  const tagNote = config.tagRelease ? await tagMergedPromotion(head, base) : null;
+  // Both opt-ins are scoped to the CONFIGURED protected branch: an explicit
+  // non-protected base (or no protected branch at all) never tags or merges.
+  const tagNote = config.tagRelease && targetsProtected ? await tagMergedPromotion(head, base) : null;
 
   const commits = await getBranchCommits(head, base);
   if (commits.length === 0) {
@@ -234,11 +236,11 @@ export async function handler(input: z.infer<typeof inputSchema>) {
   // chance to land and the pending-review gate can see it. Every refusal is
   // reported, not prompted; the PR stays open for the next re-run.
   let mergedNow = false;
-  if (action === "updated" && config.autoMergeProtected) {
+  if (action === "updated" && config.autoMergeProtected && targetsProtected) {
     const outcome = await mergeGatePullRequest(pr.number, base);
     notes.push(outcome.note);
     mergedNow = outcome.merged;
-    if (mergedNow && config.tagRelease) {
+    if (mergedNow && config.tagRelease && targetsProtected) {
       const afterMergeTag = await tagMergedPromotion(head, base);
       if (afterMergeTag) notes.push(afterMergeTag);
     }
@@ -252,7 +254,7 @@ export async function handler(input: z.infer<typeof inputSchema>) {
     return text(lines.join("\n"));
   }
 
-  const mergeStep = config.autoMergeProtected
+  const mergeStep = config.autoMergeProtected && targetsProtected
     ? `Re-run promote_branch once the review has landed and been addressed — OKFFS_AUTO_MERGE_PROTECTED=true merges it when every gate passes${config.tagRelease ? " and OKFFS_TAG_RELEASE=true then tags" : ""}.`
     : null;
   const tagStep = config.tagRelease
@@ -329,7 +331,10 @@ async function mergeGatePullRequest(prNumber: number, base: string): Promise<{ m
     const refusal = await verifyMergeable(pr, base);
     if (refusal) return { merged: false, note: `${refusal} (OKFFS_AUTO_MERGE_PROTECTED is on — re-run promote_branch once addressed.)` };
     const method = config.protectedMergeMethod;
-    await mergePullRequest(pr.number, method);
+    const result = await mergePullRequest(pr.number, method);
+    if (!result.merged) {
+      return { merged: false, note: `⚠️ GitHub did not merge ${prLabel(pr)}: ${result.message || "no reason given"} — nothing was tagged.` };
+    }
     return { merged: true, note: `✅ Merged ${prLabel(pr)} into \`${base}\` via ${method} (OKFFS_AUTO_MERGE_PROTECTED=true; all gates passed).` };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

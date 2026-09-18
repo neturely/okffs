@@ -16,6 +16,7 @@ import {
 
 export type PrLike = Pick<PullRequestDetail, "number" | "state" | "draft" | "merged" | "mergeable" | "mergeable_state" | "head" | "base"> & {
   requested_reviewers?: Array<{ login: string }>;
+  requested_teams?: Array<{ slug: string }>;
 };
 
 export function prLabel(pr: PrLike): string {
@@ -52,9 +53,9 @@ export function outstandingChecks(combined: CombinedStatus, checks: CheckRunsRes
   return [...badStatuses, ...badChecks];
 }
 
-/** Reviewers whose requested review has not been submitted yet. Pure. */
+/** Reviewers (users and teams) whose requested review has not been submitted yet. Pure. */
 export function pendingReviewers(pr: PrLike): string[] {
-  return (pr.requested_reviewers ?? []).map((r) => r.login);
+  return [...(pr.requested_reviewers ?? []).map((r) => r.login), ...(pr.requested_teams ?? []).map((t) => `team:${t.slug}`)];
 }
 
 /** Unresolved review threads that actually contain comments. Pure. */
