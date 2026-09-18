@@ -1,2 +1,2 @@
-<!-- okffs:type=Changed -->
-- Epic issues should not get a branch or draft PR ([#323](https://github.com/neturely/okffs/issues/323))
+<!-- okffs:type=Fixed -->
+- Epic issues no longer get a branch, **Branch:** line, init commit or draft PR — a draft PR's `Closes #N` could close the epic on merge while its children were still open. `create_issue`, `plan` and `create_issues_from_list` skip them for an `Epic` type; `commit_and_update` / `create_pull_request` on an epic point at its children instead of erroring ([#323](https://github.com/neturely/okffs/issues/323))
