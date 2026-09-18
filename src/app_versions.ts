@@ -27,11 +27,16 @@ export function appRootsToProbe(cwd: string = process.cwd()): AppRoots[] {
   const here = gitRoot ? path.relative(gitRoot, cwd).split(path.sep).join("/") : "";
   const names = config.apps.length > 0 ? config.apps : config.app ? [config.app] : [];
   if (names.length === 0) return [{ name: null, tagPrefix: "v", roots: [""] }];
-  return names.map((name) => {
+  const apps: AppRoots[] = names.map((name) => {
     const roots = [name];
     if (name === config.app && here !== name) roots.unshift(here); // session app: its actual dir first
     return { name, tagPrefix: resolveApp({ name }).tagPrefix, roots: [...new Set(roots)] };
   });
+  // A registry without a root OKFFS_APP means the root may still release the
+  // flat way (v-tags, root version file) — probe it too so that release is
+  // summarised and tagged rather than silently skipped.
+  if (!config.app) apps.push({ name: null, tagPrefix: "v", roots: [""] });
+  return apps;
 }
 
 /** The first version found across `roots` at `ref` (package.json, else VERSION), or null. */

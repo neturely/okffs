@@ -7,13 +7,21 @@
 
 const COVERING = new Set([".env", "**/.env", "*.env", "**/*.env", ".env*", "**/.env*"]);
 
-/** Whether `content` already ignores .env files at every depth. */
+const NEGATING = /^!.*\.env(\*)?$/;
+
+/**
+ * Whether `content` already ignores .env files at every depth. A later
+ * negation that re-includes any .env (`!.env`, `!finance/.env`) is treated
+ * conservatively as "not covered", since such a file would be trackable.
+ */
 export function gitignoreCoversEnv(content: string): boolean {
-  return content
+  const rules = content
     .split("\n")
     .map((l) => l.trim())
-    .filter((l) => l && !l.startsWith("#") && !l.startsWith("!"))
-    .some((l) => COVERING.has(l));
+    .filter((l) => l && !l.startsWith("#"));
+  const coveredAt = rules.findIndex((l) => COVERING.has(l));
+  if (coveredAt === -1) return false;
+  return !rules.slice(coveredAt + 1).some((l) => NEGATING.test(l));
 }
 
 /** Whether `content` ignores only the ROOT .env (an anchored rule) — worth calling out. */

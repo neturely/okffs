@@ -85,11 +85,6 @@ export async function runSetup(argv: string[]): Promise<number> {
     await walkSections(collected, parsed, mode);
   }
 
-  // Multisite (#313): offer an .env for every registered app directory that
-  // doesn't have one yet — runs on every pass, so a sync run picks up apps
-  // added to OKFFS_APPS since the last time.
-  await offerSiteEnvs(valuesView(collected));
-
   // Confirm before writing to an existing file. Only okffs's own marked block is
   // rewritten; the user's other variables and comments are preserved verbatim.
   if (parsed.exists) {
@@ -104,6 +99,11 @@ export async function runSetup(argv: string[]): Promise<number> {
   }
 
   await finish(collected, parsed, envPath, true);
+
+  // Multisite (#313): only AFTER the root .env is confirmed and written, offer an
+  // .env for every registered app directory that doesn't have one yet — on every
+  // pass, so a sync run picks up apps added to OKFFS_APPS since the last time.
+  await offerSiteEnvs(valuesView(collected));
   return 0;
 }
 
@@ -295,15 +295,23 @@ interface SiteContext {
   dirName: string;
 }
 
-// Site mode: cwd is below the git root AND the root has an okffs .env (any
-// okffs var). Otherwise this is the (root) wizard as usual.
+// Site mode: cwd is a REGISTERED app directory directly under the git root
+// (its name is in the root .env's OKFFS_APPS), or it already carries an .env
+// with OKFFS_APP. Any other subdirectory (src/, docs/, …) is not a site and
+// gets the ordinary wizard, so setup can never scatter stray .env files.
 function detectSite(cwd: string): SiteContext | null {
   const gitRoot = findGitRoot(cwd);
   if (!gitRoot || gitRoot === cwd) return null;
   const rootEnvPath = join(gitRoot, ".env");
   const rootParsed = parseEnv(rootEnvPath);
   if (!rootParsed.exists || rootParsed.known.size === 0) return null;
-  return { gitRoot, rootEnvPath, rootValues: rootParsed.values, dirName: basename(cwd) };
+  const dirName = basename(cwd);
+  const registry = (rootParsed.values.OKFFS_APPS ?? "").split(",").map((a) => a.trim().toLowerCase()).filter(Boolean);
+  const isDirectChild = relative(gitRoot, cwd) === dirName;
+  const registered = isDirectChild && registry.includes(dirName.toLowerCase());
+  const alreadySite = Boolean(parseEnv(join(cwd, ".env")).values.OKFFS_APP);
+  if (!registered && !alreadySite) return null;
+  return { gitRoot, rootEnvPath, rootValues: rootParsed.values, dirName };
 }
 
 async function runSiteSetup(site: SiteContext, envPath: string, parsed: ReturnType<typeof parseEnv>): Promise<number> {

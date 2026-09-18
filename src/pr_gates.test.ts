@@ -43,6 +43,7 @@ test("outstandingChecks lists failing/pending statuses and check runs only", () 
 test("pendingReviewers and unresolvedThreadCount", () => {
   assert.deepEqual(pendingReviewers(pr()), []);
   assert.deepEqual(pendingReviewers(pr({ requested_reviewers: [{ login: "copilot-pull-request-reviewer[bot]" }] })), ["copilot-pull-request-reviewer[bot]"]);
+  assert.deepEqual(pendingReviewers(pr({ requested_teams: [{ slug: "release-owners" }] })), ["team:release-owners"]);
   const threads = [
     { id: "1", isResolved: false, comments: [{ id: 1, path: null, line: null, author: "a", body: "x" }] },
     { id: "2", isResolved: true, comments: [{ id: 2, path: null, line: null, author: "a", body: "y" }] },

@@ -45,7 +45,15 @@ function parseMergeMethod(envVar: string, def: MergeMethod): MergeMethod {
 // set, the app name becomes the tag prefix (`finance-1.2.0`), the release-branch
 // prefix, the default branch identifier and an issue label. Both unset (every
 // single-site user) ⇒ nothing changes. An invalid name warns and is ignored.
-const multisiteApps = parseCommaList(process.env.OKFFS_APPS).map((a) => a.toLowerCase());
+const multisiteApps = parseCommaList(process.env.OKFFS_APPS)
+  .map((a) => a.toLowerCase())
+  .filter((a) => {
+    // Registry entries double as repo-relative path prefixes (app_versions.ts),
+    // so a malformed entry like `../secrets` is rejected, not merely lowercased.
+    if (isValidAppName(a)) return true;
+    console.warn(`[okffs] OKFFS_APPS entry "${a}" is not a valid app name (lowercase letters, digits, hyphens) — ignoring it.`);
+    return false;
+  });
 const multisiteApp = ((): string | null => {
   const raw = process.env.OKFFS_APP?.trim().toLowerCase() || null;
   if (raw && !isValidAppName(raw)) {
@@ -60,8 +68,10 @@ export const config = {
   app: multisiteApp,
   promptForMetadata: process.env.OKFFS_PROMPT_METADATA !== "false",
   defaultAssignees: parseCommaList(process.env.OKFFS_DEFAULT_ASSIGNEES),
-  // The multisite app name is always one of the default labels (#309).
-  defaultLabels: [...new Set([...parseCommaList(process.env.OKFFS_DEFAULT_LABELS), ...(multisiteApp ? [multisiteApp] : [])])],
+  // The app label is NOT folded in here: issueAppFor() supplies exactly one app
+  // label (the session app, or a per-call override) so an override never ends
+  // up double-labelled with both apps.
+  defaultLabels: parseCommaList(process.env.OKFFS_DEFAULT_LABELS),
   baseBranch: process.env.OKFFS_BASE_BRANCH || null,
   // OKFFS_PROTECTED_BRANCH — a branch okffs won't open/finalize a PR into without
   // explicit user confirmation (e.g. `main`). create_pull_request refuses to
