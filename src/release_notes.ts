@@ -26,9 +26,13 @@ export function releaseTitle(app: string | null, version: string, tag: string): 
   return app ? `${app} ${version}` : tag;
 }
 
-/** Prerelease only for a suffixed version (`1.0.0-rc.1`) — 0.x is a normal release. */
+/**
+ * Prerelease only for a version with a prerelease component (`1.0.0-rc.1`).
+ * Build metadata after `+` (`1.0.0+build-1`) is not a prerelease, and 0.x is
+ * a normal release.
+ */
 export function isPrereleaseVersion(version: string): boolean {
-  return version.includes("-");
+  return version.split("+")[0].includes("-");
 }
 
 /** Notes body, with a fallback when the changelog has no section for the version. */
