@@ -56,7 +56,7 @@ Claude infers labels (`bug`, `enhancement`, …) from the title and description 
 
 | Tool | What it does |
 |------|-------------|
-| `create_issue` | Creates an issue and a matching branch. Infers labels, a board `priority`/`effort`, and a native Issue Type from the task (toggle with `OKFFS_INFER_PRIORITY`/`OKFFS_INFER_EFFORT`/`OKFFS_INFER_TYPE`). Optional `assignees`, `labels`, `milestone`, `priority`, `effort`, `type`. Opens a draft PR immediately when `OKFFS_AUTO_PR=true`. |
+| `create_issue` | Creates an issue and a matching branch (an **Epic** gets no branch or draft PR — work lands on its children). Infers labels, a board `priority`/`effort`, and a native Issue Type from the task (toggle with `OKFFS_INFER_PRIORITY`/`OKFFS_INFER_EFFORT`/`OKFFS_INFER_TYPE`). Optional `assignees`, `labels`, `milestone`, `priority`, `effort`, `type`. Opens a draft PR immediately when `OKFFS_AUTO_PR=true`. |
 | `create_issues_from_list` | Creates many issues + branches from a task list in one shot. Confirms first. Per-task `labels`, `assignees`, `milestone`, `priority`, `effort`, `type`. |
 | `plan` | Give it a free-text description plus the breakdown Claude generates (titles, descriptions, labels, priority/effort/type, relationships); it creates every issue + branch, wires up relationships, and opens draft PRs when `OKFFS_AUTO_PR=true`. Confirms first. |
 | `list_issues` | Lists open issues with branch, linked PR, board column, `priority:`/`effort:`, native `type:`, and relationships as a tree — ordered by priority so the most important work is on top. |

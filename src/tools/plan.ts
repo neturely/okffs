@@ -11,6 +11,7 @@ import {
 } from "../github.js";
 import { config } from "../config.js";
 import { issueAppFor } from "../multisite.js";
+import { isEpicType, epicNoBranchNote } from "../epic.js";
 import { git, currentBranch } from "../git.js";
 import {
   boardAutoAddEnabled,
@@ -140,7 +141,7 @@ export async function handler(input: z.infer<typeof inputSchema>) {
   const created: Array<{
     number: number;
     html_url: string;
-    branchName: string;
+    branchName: string | null;
     body: string;
     relationships: z.infer<typeof relationshipSchema>[];
     resolvedPriority?: string | null;
@@ -174,11 +175,14 @@ export async function handler(input: z.infer<typeof inputSchema>) {
       resolvedLabels,
       task.milestone
     );
-    const branchName = buildBranchName(issue.number, task.title, taskApp.identifier);
-    await createBranch(branchName, ref.object.sha);
-
-    const body = `${taskBody}\n\n**Branch:** \`${branchName}\``;
-    await updateIssueBody(issue.number, body);
+    // Epics get no branch / **Branch:** line / draft PR (#323).
+    const branchName: string | null = isEpicType(resolvedType) ? null : buildBranchName(issue.number, task.title, taskApp.identifier);
+    let body = taskBody;
+    if (branchName) {
+      await createBranch(branchName, ref.object.sha);
+      body = `${taskBody}\n\n**Branch:** \`${branchName}\``;
+      await updateIssueBody(issue.number, body);
+    }
 
     // Native Issue Type — non-fatal per task, surfaced in the result below.
     let typeOutcome: BoardFieldOutcome | null = null;
@@ -239,6 +243,7 @@ export async function handler(input: z.infer<typeof inputSchema>) {
     try {
       git(["fetch", "origin"]);
       for (const entry of created) {
+        if (!entry.branchName) continue; // epic — nothing to diverge
         try {
           git(["checkout", entry.branchName]);
           git(["commit", "--allow-empty", "-m", `chore: init branch for #${entry.number}`]);
@@ -264,6 +269,7 @@ export async function handler(input: z.infer<typeof inputSchema>) {
     }
 
     for (const [i, entry] of created.entries()) {
+      if (!entry.branchName) continue; // epic — no draft PR
       try {
         const pr = await createDraftPullRequest(
           `WIP: #${entry.number} - ${input.tasks[i].title}`,
@@ -297,7 +303,7 @@ export async function handler(input: z.infer<typeof inputSchema>) {
   const results = created.map((entry, i) => {
     const lines = [
       `#${entry.number} — ${input.tasks[i].title}`,
-      `  Branch: \`${entry.branchName}\``,
+      entry.branchName ? `  Branch: \`${entry.branchName}\`` : `  Branch: ${epicNoBranchNote()}`,
       `  ${entry.html_url}`,
     ];
     if (draftPRs[entry.number]) {

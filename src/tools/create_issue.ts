@@ -2,6 +2,7 @@ import { z } from "zod";
 import { createIssue, updateIssueBody, getDefaultBranch, getRef, createBranch, buildBranchName, createDraftPullRequest, summarizeGitHubError } from "../github.js";
 import { config } from "../config.js";
 import { issueAppFor } from "../multisite.js";
+import { isEpicType, epicNoBranchNote } from "../epic.js";
 import { pushEmptyInitCommit } from "../git.js";
 import {
   boardAutoAddEnabled,
@@ -125,14 +126,18 @@ export async function handler(input: z.infer<typeof inputSchema>) {
 
   const issue = await createIssue(input.title, issueBody, resolvedAssignees, resolvedLabels, input.milestone);
 
-  const branchName = buildBranchName(issue.number, input.title, issueApp.identifier);
+  // Epics (#323) get no branch, **Branch:** line, init commit or draft PR — a
+  // draft PR's `Closes #N` would close the epic on merge while its children are
+  // still open. Everything else (board, labels, type, relationships) applies.
+  const isEpic = isEpicType(resolvedType);
+  const branchName: string | null = isEpic ? null : buildBranchName(issue.number, input.title, issueApp.identifier);
 
   const defaultBranch = await getDefaultBranch();
-  const ref = await getRef(defaultBranch);
-  await createBranch(branchName, ref.object.sha);
-
-  const updatedBody = `${issueBody}\n\n**Branch:** \`${branchName}\``;
-  await updateIssueBody(issue.number, updatedBody);
+  if (branchName) {
+    const ref = await getRef(defaultBranch);
+    await createBranch(branchName, ref.object.sha);
+    await updateIssueBody(issue.number, `${issueBody}\n\n**Branch:** \`${branchName}\``);
+  }
 
   // Set the native GitHub Issue Type (Task/Bug/Feature/…). Non-fatal, like the
   // board writes: any miss (user repo, no org types, unknown name) is surfaced in
@@ -160,7 +165,7 @@ export async function handler(input: z.infer<typeof inputSchema>) {
 
   let draftPRUrl: string | null = null;
   let autoPRError: string | null = null;
-  if (config.autoPR) {
+  if (config.autoPR && branchName) {
     // Push an empty init commit so the branch diverges from base, allowing
     // GitHub to accept a draft PR immediately. Only needed for the auto-PR flow.
     // Shared with create_pull_request's allow_empty backfill (#205).
@@ -201,7 +206,7 @@ export async function handler(input: z.infer<typeof inputSchema>) {
 
   const lines = [
     `Issue #${issue.number} created: ${issue.html_url}`,
-    `Branch: \`${branchName}\``,
+    branchName ? `Branch: \`${branchName}\`` : `Branch: ${epicNoBranchNote()}`,
   ];
 
   if (draftPRUrl) {
@@ -249,12 +254,14 @@ export async function handler(input: z.infer<typeof inputSchema>) {
     })
   );
 
-  lines.push(
-    ``,
-    `To start work:`,
-    `  git fetch origin`,
-    `  git checkout ${branchName}`,
-  );
+  if (branchName) {
+    lines.push(
+      ``,
+      `To start work:`,
+      `  git fetch origin`,
+      `  git checkout ${branchName}`,
+    );
+  }
 
   // Conversational nudge: prompt the host LLM to offer moving the issue into
   // the "In Progress" column via update_project_status once work begins, and to
