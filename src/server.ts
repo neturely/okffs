@@ -4,6 +4,8 @@
 // throws when unconfigured, which is exactly the state `okffs setup` runs in.
 // index.ts only dynamically imports this module for a bare (no-arg) invocation,
 // so the MCP server's behaviour is unchanged.
+import { config } from "./config.js";
+import { collectMultisiteWarnings } from "./multisite.js";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -77,7 +79,7 @@ Common action → tool:
 - Start work: create_issue (creates the issue, the linked branch, and the **Branch:** line that create_pull_request/commit_and_update rely on). Many at once: create_issues_from_list or plan.
 - Progress: commit_and_update (stage + commit + push + issue comment) — prefer over raw git commit/push.
 - Open/finalize an issue's PR (into the base branch): create_pull_request (always adds Closes #N).
-- Promotion/release gate — a base→protected PR with no issue, e.g. develop→main: promote_branch (issue-less; adds the PR to the board; NEVER use raw \`gh pr create\` for this). When it auto-requests a review (e.g. Copilot), CHECK BACK for the feedback before handing the merge to the user: re-run promote_branch (a re-run reports the gate PR's unresolved review threads without re-requesting the billable review; list_issues surfaces them too) and address them via the address_pr_review loop — fixes land through fix_into_base, threads resolve only after the fix PR merges.
+- Promotion/release gate — a base→protected PR with no issue, e.g. develop→main: promote_branch (issue-less; adds the PR to the board; NEVER use raw \`gh pr create\` for this). When it auto-requests a review (e.g. Copilot), CHECK BACK for the feedback before handing the merge to the user: re-run promote_branch (a re-run reports the gate PR's unresolved review threads without re-requesting the billable review; list_issues surfaces them too) and address them via the address_pr_review loop — fixes land through fix_into_base, threads resolve only after the fix PR merges. With OKFFS_AUTO_MERGE_PROTECTED=true and OKFFS_TAG_RELEASE=true the same re-run then merges the gate PR (every gate green, review landed and resolved) and tags the release — the fully handled promotion: open → review lands → address → re-run merges + tags.
 - Edit an existing issue's core fields (title, assignees, labels, milestone, body): update_issue — prefer over raw \`gh issue edit\`. (Board Priority/Effort is set_issue_fields; Status column is update_project_status — those aren't issue fields.)
 - Board: create_issue sets an inferred priority/effort at creation; set them on an EXISTING issue with set_issue_fields; move columns with update_project_status (Backlog/Ready/In Progress/Review — Done is GitHub's own automation).
 - PR review: list_pr_review_comments → fix → reply_to_review_comment → resolve_review_thread (honours OKFFS_RESOLVE_THREADS); or the /okffs:address_pr_review prompt.
@@ -90,11 +92,11 @@ Setup/config: if the user needs to configure okffs — a missing token/repo, or 
 Autopilot (minimum-interference mode): a session interaction style — when ACTIVE, stop asking the user to choose between options for REVERSIBLE decisions; take the recommended/logical option at each fork and drive the issue all the way to a PR into the base branch (and a merge into the base branch where OKFFS_AUTO_MERGE_BASE=true), then report the choices. It removes confirmation friction — it does NOT escalate authorization: everything autopilot does, okffs was already permitted to do, and it stays entirely on the recoverable side of OKFFS_PROTECTED_BRANCH (which is why decide-then-report is safe). Activate it per-request when the user says something like "minimum interference", "fully handle this", "handle it end to end", or "autopilot"; it is also on by default when OKFFS_AUTOPILOT=true. When it is NOT active, keep asking as usual. Under autopilot:
 - Decide-and-log (judgment calls): merge method, PR structure, whether a review nit is valid, changelog category, inferred priority/effort/type, and similar — pick the sensible default and record it; do not ask.
 - Ask-or-flag (missing-information calls): when a wrong guess would waste real work because only the user holds the context (e.g. "which of my repos matter", product intent) — "minimum", not "zero": you may ask ONE quick question, or pick the most reversible option and flag it prominently in the report for a one-message course-correction. Prefer this over a blunt "never ask" that silently takes the wrong branch.
-- HARD STOPS — always interrupt, even in autopilot: anything into OKFFS_PROTECTED_BRANCH (merge/tag/publish — the standing invariant); destructive tools (delete_issue/delete_branch confirmed:true); anything that costs money (e.g. a billable Copilot review on a NEW promotion PR — keep it asking); and genuinely irreversible or externally-visible actions.
+- HARD STOPS — always interrupt, even in autopilot: destructive tools (delete_issue/delete_branch confirmed:true); anything into OKFFS_PROTECTED_BRANCH (merge/tag/publish) that the user has NOT opted into; anything billable or irreversible the user has NOT opted into. An EXPLICIT ENV OPT-IN IS THE CONSENT — never re-ask for it: OKFFS_PROMOTION_AUTO_REVIEW=true means the (billable) review on a new promotion PR is the user's own GitHub billing choice, so request it without asking; OKFFS_AUTO_MERGE_PROTECTED=true means a promote_branch re-run merges the gate PR once every gate passes; OKFFS_TAG_RELEASE=true means the re-run tags the release. Correctness stops are never overridden by any flag — a failing check, a pending requested review, an unresolved thread, a moved branch tip: okffs refuses and reports, you relay and retry later.
 - Decisions report (the safety valve that makes decide-then-report acceptable): at the end of a run emit a concise "Autopilot decisions" block — one line per fork, what you chose + a one-line why. Pass it as create_pull_request's \`autopilot_decisions\` (and to commit_and_update along the way) so okffs renders it into the PR body and the issue comment, and echo it in chat.
 okffs also OFFERS autopilot when work starts (create_issue's closing prompt), mirroring an auto mode.
 
-Rules: never merge, tag, or publish into OKFFS_PROTECTED_BRANCH autonomously — okffs may OPEN a PR into it (promote_branch), but the merge/tag are yours to hand back for. merge_pull_request only ever lands PRs into the base tier, never the protected branch. Destructive tools (delete_issue, delete_branch) require confirmed: true (call once to preview, again to act). These rules hold even under autopilot.`;
+Rules: never merge, tag, or publish into OKFFS_PROTECTED_BRANCH autonomously UNLESS the user opted in by env — OKFFS_AUTO_MERGE_PROTECTED=true (promote_branch re-run merges the gate PR under the full merge gates) and/or OKFFS_TAG_RELEASE=true (the re-run tags the merged release). Without those flags, okffs may OPEN a PR into it (promote_branch), but the merge/tag are yours to hand back for. merge_pull_request only ever lands PRs into the base tier, never the protected branch. Destructive tools (delete_issue, delete_branch) require confirmed: true (call once to preview, again to act). These rules hold even under autopilot.`;
 
 // Compare two dotted versions; >0 if a is newer than b. Prerelease suffixes are
 // ignored (split on `.`/`-`), which is fine for the coarse "did we upgrade?" check.
@@ -121,7 +123,12 @@ function upgradeNudge(): string {
     const newKeys = allKeys().filter((k) => !parsed.known.has(k));
     if (newKeys.length === 0) return "";
     const from = stamp ? `from ${stamp} ` : "";
-    return `\n\nUPGRADE NUDGE: this repo's .env was configured ${from}with an older okffs; okffs ${version} has ${newKeys.length} config option(s) not set here. Once, offer to run the /okffs:setup prompt (sync) to review the new options — if the user declines, drop it, don't repeat.`;
+    // Headline for the 0.13 feature set (#314): surfaced once, alongside the nudge,
+    // until setup marks the multisite keys known/declined.
+    const headline = newKeys.includes("OKFFS_APPS")
+      ? ` New in okffs 0.13 — MULTISITE: several apps in one repo (e.g. finance/ and health/), each with its own version, changelog, tags and .env inheriting the root's; plus the fully handled promotion (OKFFS_AUTO_MERGE_PROTECTED + OKFFS_TAG_RELEASE). Single-site repos are unaffected. See the README's "Multisite" section.`
+      : "";
+    return `\n\nUPGRADE NUDGE: this repo's .env was configured ${from}with an older okffs; okffs ${version} has ${newKeys.length} config option(s) not set here.${headline} Once, offer to run the /okffs:setup prompt (sync) to review the new options — if the user declines, drop it, don't repeat.`;
   } catch {
     return "";
   }
@@ -138,6 +145,17 @@ function autopilotBanner(): string {
     : "";
 }
 
+// Multisite notes (#309): migration/consistency warnings for OKFFS_APP/OKFFS_APPS
+// users — never emitted for single-site. Logged once at startup and appended to
+// the instructions so the agent relays them.
+function multisiteNote(): string {
+  const warnings = collectMultisiteWarnings();
+  if (warnings.length === 0) return "";
+  for (const w of warnings) console.warn(`[okffs] ${w}`);
+  const active = config.app ? `OKFFS_APP=${config.app}` : "no OKFFS_APP";
+  return `\n\nMULTISITE (${active}; OKFFS_APPS=${config.apps.join(",") || "unset"}) — tell the user once:\n- ${warnings.join("\n- ")}`;
+}
+
 export async function startServer(): Promise<void> {
   // Adopt GitHub's canonical owner/repo before serving any tool call — after a
   // repo transfer the stale owner still works in URL paths (301 followed) but
@@ -146,7 +164,7 @@ export async function startServer(): Promise<void> {
 
   const server = new Server(
     { name: "okffs", version },
-    { capabilities: { tools: {}, prompts: {} }, instructions: SERVER_INSTRUCTIONS + upgradeNudge() + autopilotBanner() }
+    { capabilities: { tools: {}, prompts: {} }, instructions: SERVER_INSTRUCTIONS + upgradeNudge() + autopilotBanner() + multisiteNote() }
   );
 
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
