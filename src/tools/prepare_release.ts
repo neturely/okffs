@@ -6,19 +6,22 @@ import { getUnreleasedSection, rollChangelogForRelease, foldFragmentsIntoChangel
 import { bumpVersion } from "../version.js";
 import { readVersionSource, writeVersionBump } from "../version_source.js";
 import { tagName, releaseBranchName } from "../apps.js";
-import { activeApp } from "../multisite.js";
+import { releaseAppForCall } from "../multisite.js";
 import { git, currentBranch } from "../git.js";
 import { config } from "../config.js";
 
 export const name = "prepare_release";
 
 export const description =
-  "Prepare a release: bump the version (package.json + package-lock.json when present, else a plain VERSION file — created on the first release if neither exists), roll the CHANGELOG ([Unreleased] → a dated version section with a fresh empty [Unreleased] and updated compare links), commit on a release branch, and open a PR. It does NOT tag or publish — tagging (which triggers the CI npm publish) stays a manual step after merge. Provide an explicit `version` or a `bump` level; if neither is given, a level is inferred from the [Unreleased] entries (### Added → minor, otherwise patch) and surfaced for confirmation. Two-step: call once to preview, re-call with confirmed: true to apply.";
+  "Prepare a release: bump the version (package.json + package-lock.json when present, else a plain VERSION file — created on the first release if neither exists), roll the CHANGELOG ([Unreleased] → a dated version section with a fresh empty [Unreleased] and updated compare links), commit on a release branch, and open a PR. It does NOT tag or publish — tagging (which triggers the CI npm publish) stays a manual step after merge. Provide an explicit `version` or a `bump` level; if neither is given, a level is inferred from the [Unreleased] entries (### Added → minor, otherwise patch) and surfaced for confirmation. Multisite: pass `app` to release one registry app from the repo root (defaults to the session's OKFFS_APP). Two-step: call once to preview, re-call with confirmed: true to apply.";
 
 export const inputSchema = z.object({
   version: z.string().optional().describe("Explicit target version, e.g. 0.1.7 (takes precedence over bump)"),
   bump: z.enum(["patch", "minor", "major"]).optional().describe("Semver bump level if version is not given"),
   confirmed: z.boolean().optional().describe("Must be true to apply (otherwise previews)"),
+  app: z.string().optional().describe(
+    "Multisite: the app to release (one of OKFFS_APPS) — its <app>/CHANGELOG.md, fragments, version source and tag prefix. Defaults to the session's OKFFS_APP; required from a root session of a multisite repo. Single-site repos never need it."
+  ),
 });
 
 // bumpVersion lives in version.ts; the version source (package.json / VERSION)
@@ -26,8 +29,13 @@ export const inputSchema = z.object({
 // descriptor in apps.ts (#307) — all pure/fs-only and unit-tested.
 
 export async function handler(input: z.infer<typeof inputSchema>) {
-  // The session's OKFFS_APP (#309), or the single-site descriptor.
-  const app = activeApp();
+  // The app to release (#332): explicit `app`, else the session's OKFFS_APP;
+  // a root session of a multisite repo without either is refused with the list.
+  const resolved = releaseAppForCall(input.app);
+  if (!resolved.ok) {
+    return { content: [{ type: "text" as const, text: resolved.error }] };
+  }
+  const app = resolved.app;
   const base = path.resolve(process.cwd(), app.root);
   const clPath = path.join(base, app.changelogPath);
   const clName = app.changelogPath;

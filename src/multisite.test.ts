@@ -64,6 +64,32 @@ test("fragmentRootFor: session app wins, else the issue's app label, else cwd", 
   assert.deepEqual(fragmentRootFor({ sessionApp: null, apps: [], labels: [{ name: "health" }], cwdFromGitRoot: "" }), { root: ".", app: null, source: "none" });
 });
 
+test("releaseAppFor: explicit app, session app, refusal from a root session with a registry", async () => {
+  const { releaseAppFor } = await import("./multisite.js");
+  const apps = ["finance", "health"];
+  // Explicit app from the root → health/ root, health- tag prefix.
+  const r1 = releaseAppFor({ override: "health", sessionApp: null, apps, cwdFromGitRoot: "" });
+  assert.ok(r1.ok); if (r1.ok) { assert.equal(r1.app.root, "health"); assert.equal(r1.app.tagPrefix, "health-"); }
+  // Explicit app from inside that app's dir → ".".
+  const r2 = releaseAppFor({ override: "health", sessionApp: null, apps, cwdFromGitRoot: "health" });
+  assert.ok(r2.ok); if (r2.ok) assert.equal(r2.app.root, ".");
+  // Explicit app from a nested dir → climb out.
+  const r3 = releaseAppFor({ override: "finance", sessionApp: "health", apps, cwdFromGitRoot: "health" });
+  assert.ok(r3.ok); if (r3.ok) assert.equal(r3.app.root, "../finance");
+  // Session app, no override → cwd is the app root.
+  const r4 = releaseAppFor({ sessionApp: "finance", apps, cwdFromGitRoot: "finance" });
+  assert.ok(r4.ok); if (r4.ok) { assert.equal(r4.app.root, "."); assert.equal(r4.app.name, "finance"); }
+  // Root session with a registry and no app → refused, listing the apps.
+  const r5 = releaseAppFor({ sessionApp: null, apps, cwdFromGitRoot: "" });
+  assert.ok(!r5.ok); if (!r5.ok) assert.match(r5.error, /one of: finance, health/);
+  // Unknown / malformed app → refused.
+  assert.ok(!releaseAppFor({ override: "wealth", sessionApp: null, apps, cwdFromGitRoot: "" }).ok);
+  assert.ok(!releaseAppFor({ override: "../x", sessionApp: null, apps: [], cwdFromGitRoot: "" }).ok);
+  // Single-site: no registry, no app → the flat descriptor.
+  const r6 = releaseAppFor({ sessionApp: null, apps: [], cwdFromGitRoot: "" });
+  assert.ok(r6.ok); if (r6.ok) { assert.equal(r6.app.name, null); assert.equal(r6.app.tagPrefix, "v"); }
+});
+
 test("appFromLabels matches a registered app from label objects or strings", async () => {
   const { appFromLabels } = await import("./multisite.js");
   assert.equal(appFromLabels([{ name: "okffs" }, { name: "Finance" }], ["finance", "health"]), "finance");

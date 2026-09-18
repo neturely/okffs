@@ -122,6 +122,51 @@ export function fragmentRootForIssue(labels: unknown, cwd: string = process.cwd(
   return fragmentRootFor({ sessionApp: config.app, apps: config.apps, labels, cwdFromGitRoot });
 }
 
+export interface ReleaseAppInput {
+  /** Per-call `app` override, if any. */
+  override?: string | null;
+  sessionApp: string | null;
+  apps: string[];
+  cwdFromGitRoot: string;
+}
+
+export type ReleaseAppResult = { ok: true; app: AppDescriptor } | { ok: false; error: string };
+
+/**
+ * Which app a release-side tool (prepare_release) acts on, and where its root
+ * is relative to the cwd (#332). An explicit `app` (validated against the
+ * registry) or the session's OKFFS_APP; a root session with a registry but
+ * neither is refused with the list of apps, instead of a file-not-found.
+ * No registry and no app → the single-site descriptor. Pure.
+ */
+export function releaseAppFor(input: ReleaseAppInput): ReleaseAppResult {
+  const override = input.override?.trim().toLowerCase() || null;
+  if (override) {
+    if (!isValidAppName(override)) return { ok: false, error: `[okffs] app "${input.override}" is not a valid app name (lowercase letters, digits, hyphens).` };
+    if (input.apps.length > 0 && !input.apps.includes(override)) {
+      return { ok: false, error: `[okffs] app "${override}" is not in OKFFS_APPS (${input.apps.join(", ")}) — add it to the registry in the root .env, or fix the name.` };
+    }
+    const up = input.cwdFromGitRoot ? input.cwdFromGitRoot.split("/").filter(Boolean).map(() => "..") : [];
+    const root = input.cwdFromGitRoot === override ? "." : [...up, override].join("/");
+    return { ok: true, app: resolveApp({ name: override, root }) };
+  }
+  if (input.sessionApp) return { ok: true, app: resolveApp({ name: input.sessionApp }) };
+  if (input.apps.length > 0) {
+    return {
+      ok: false,
+      error: `[okffs] This is a multisite repo (OKFFS_APPS=${input.apps.join(",")}) and this session has no OKFFS_APP — pass \`app\` (one of: ${input.apps.join(", ")}) or run from inside the app's directory.`,
+    };
+  }
+  return { ok: true, app: resolveApp() };
+}
+
+/** Config + fs wrapper for the tools. */
+export function releaseAppForCall(override?: string | null, cwd: string = process.cwd()): ReleaseAppResult {
+  const gitRoot = findGitRoot(cwd);
+  const cwdFromGitRoot = gitRoot ? path.relative(gitRoot, cwd).split(path.sep).join("/") : "";
+  return releaseAppFor({ override, sessionApp: config.app, apps: config.apps, cwdFromGitRoot });
+}
+
 export interface MultisiteState {
   app: string | null;
   apps: string[];
