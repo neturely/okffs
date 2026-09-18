@@ -18,10 +18,9 @@ import {
   type PullRequestDetail,
 } from "../github.js";
 import { verifyMergeable, prLabel } from "../pr_gates.js";
-import path from "path";
-import { findGitRoot } from "../env_load.js";
-import { resolveApp } from "../apps.js";
-import { versionFromFiles, decideTags, renderTagReport, type AppVersionProbe } from "../tagging.js";
+import { decideTags, renderTagReport, type AppVersionProbe } from "../tagging.js";
+import { probeAppVersions } from "../app_versions.js";
+import { summarizeReleases, renderReleaseSection, renderReleaseNote } from "../release_summary.js";
 import { config } from "../config.js";
 import { addIssueToProject, getProjectMetadata, setProjectFieldValue } from "../projects.js";
 import { summarizeReviewThreads, renderReviewGateWarning } from "../review_gate.js";
@@ -121,9 +120,27 @@ export async function handler(input: z.infer<typeof inputSchema>) {
     return baseIsDefault ? subject.replace(/#(\d+)/g, "`#$1`") : subject;
   };
   const changes = commits.map((c) => `- ${subjectOf(c)}`).join("\n");
+
+  // Releases carried by this promotion (#312): apps whose version differs
+  // between the head tip and the base tip — the same rule the post-merge
+  // tagging applies, so the section names exactly the tags the merge yields.
+  // Best-effort: a probe failure drops the section, never the PR.
+  let releaseSection: string | null = null;
+  let releaseNote: string | null = null;
+  try {
+    const [headRef, baseRef] = await Promise.all([getRef(head), getRef(base)]);
+    const pairs = await probeAppVersions(headRef.object.sha, baseRef.object.sha);
+    const entries = summarizeReleases(pairs.map((p) => ({ name: p.name, tagPrefix: p.tagPrefix, versionAtHead: p.versionAtA, versionAtBase: p.versionAtB })));
+    releaseSection = renderReleaseSection(entries);
+    releaseNote = renderReleaseNote(entries, config.tagRelease);
+  } catch (err) {
+    console.warn(`[okffs] Could not summarise releases for ${head} → ${base}:`, err instanceof Error ? err.message : err);
+  }
+
   const body = [
     input.summary ?? `Promotion PR from \`${head}\` into \`${base}\`. No \`Closes #N\` — this is a branch promotion, not an issue.`,
     ``,
+    ...(releaseSection ? [releaseSection, ``] : []),
     `## Promoting (${commits.length} commit${commits.length === 1 ? "" : "s"})`,
     changes,
   ].join("\n");
@@ -148,6 +165,7 @@ export async function handler(input: z.infer<typeof inputSchema>) {
   // failure warns with an [okffs] prefix, is surfaced in the response, and never
   // fails the promotion.
   const notes: string[] = [];
+  if (releaseNote) notes.push(releaseNote);
 
   // Auto-request reviewers only when explicitly opted in (OKFFS_PROMOTION_AUTO_REVIEW)
   // and only on a NEWLY-created gate PR — never on updates/re-runs — so a paid
@@ -253,36 +271,6 @@ export async function handler(input: z.infer<typeof inputSchema>) {
 }
 
 
-// Which repo-relative roots to probe for each app's version file. Registry apps
-// live at `{app}/` by convention; the session's own app (OKFFS_APP) is wherever
-// this session runs from (its .env), which also covers a root that is itself an
-// app. Single-site (no registry, no app) probes the repo root with the "v" prefix.
-function appRootsToProbe(): Array<{ name: string | null; tagPrefix: string; roots: string[] }> {
-  const cwd = process.cwd();
-  const gitRoot = findGitRoot(cwd);
-  const here = gitRoot ? path.relative(gitRoot, cwd).split(path.sep).join("/") : "";
-  const names = config.apps.length > 0 ? config.apps : config.app ? [config.app] : [];
-  if (names.length === 0) return [{ name: null, tagPrefix: "v", roots: [""] }];
-  return names.map((name) => {
-    const roots = [name];
-    if (name === config.app && here !== name) roots.unshift(here); // session app: its actual dir first
-    return { name, tagPrefix: resolveApp({ name }).tagPrefix, roots: [...new Set(roots)] };
-  });
-}
-
-async function versionAt(roots: string[], ref: string): Promise<string | null> {
-  for (const root of roots) {
-    const prefix = root ? `${root}/` : "";
-    const [packageJson, versionFile] = await Promise.all([
-      getFileContentAtRef(`${prefix}package.json`, ref),
-      getFileContentAtRef(`${prefix}VERSION`, ref),
-    ]);
-    const v = versionFromFiles({ packageJson, versionFile });
-    if (v) return v;
-  }
-  return null;
-}
-
 // Tag the release(s) carried by the latest merged head→base PR. Best-effort:
 // any failure is reported in the note and never blocks the promotion itself.
 async function tagMergedPromotion(head: string, base: string): Promise<string | null> {
@@ -291,14 +279,12 @@ async function tagMergedPromotion(head: string, base: string): Promise<string | 
     if (!merged || !merged.merge_commit_sha) return null;
     const mergeSha = merged.merge_commit_sha;
     const [parentSha, tip] = await Promise.all([getCommitParentSha(mergeSha), getRef(base)]);
-    const probes: AppVersionProbe[] = [];
-    for (const app of appRootsToProbe()) {
-      const [versionAtMerge, versionAtParent] = await Promise.all([
-        versionAt(app.roots, mergeSha),
-        parentSha ? versionAt(app.roots, parentSha) : Promise.resolve(null),
-      ]);
-      probes.push({ name: app.name, tagPrefix: app.tagPrefix, versionAtMerge, versionAtParent });
-    }
+    const probes: AppVersionProbe[] = (await probeAppVersions(mergeSha, parentSha)).map((p) => ({
+      name: p.name,
+      tagPrefix: p.tagPrefix,
+      versionAtMerge: p.versionAtA,
+      versionAtParent: p.versionAtB,
+    }));
     const candidates = probes.filter((p) => p.versionAtMerge).map((p) => `${p.tagPrefix}${p.versionAtMerge}`);
     const existingTags = new Map<string, string>();
     for (const tag of candidates) {
