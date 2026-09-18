@@ -6,9 +6,6 @@ import {
   getRepoDefaultBranch,
   getOpenPullRequestForBranch,
   getPullRequest,
-  getCombinedStatus,
-  getCheckRuns,
-  getPullRequestReview,
   mergePullRequest,
   closeIssue,
   addIssueComment,
@@ -17,6 +14,7 @@ import {
   type PullRequestDetail,
 } from "../github.js";
 import { config } from "../config.js";
+import { verifyMergeable } from "../pr_gates.js";
 
 export const name = "merge_pull_request";
 
@@ -134,61 +132,11 @@ export async function handler(input: z.infer<typeof inputSchema>) {
     );
   }
 
-  // ── Basic state: open, not draft, not already merged ──────────────────────
-  if (pr.merged) return text(`${label} is already merged — nothing to do.`);
-  if (pr.state !== "open") return text(`[okffs] Refusing to merge ${label}: the PR is ${pr.state}, not open.`);
-  if (pr.draft) return text(`[okffs] Refusing to merge ${label}: it is still a draft. Mark it ready (e.g. create_pull_request finalizes it) first.`);
-
-  // ── Conflicts / needs-update / required-gate signals (mergeable_state) ────
-  if (pr.mergeable === false || pr.mergeable_state === "dirty") {
-    return text(`[okffs] Refusing to merge ${label}: it has merge conflicts with \`${baseTier}\`. Resolve them, then retry.`);
-  }
-  if (pr.mergeable_state === "behind") {
-    return text(`[okffs] Refusing to merge ${label}: the branch is behind \`${baseTier}\`. Update it (merge/rebase base in), then retry.`);
-  }
-  if (pr.mergeable_state === "blocked") {
-    return text(
-      `[okffs] Refusing to merge ${label}: GitHub reports it as blocked by a required gate (required review or required check not yet satisfied).`
-    );
-  }
-  if (pr.mergeable === null || pr.mergeable_state === "unknown") {
-    return text(`[okffs] Refusing to merge ${label}: GitHub hasn't finished computing its mergeability. Try again shortly.`);
-  }
-
-  // ── Gate 4: independently verify checks are green (don't trust the ruleset) ─
-  // A ruleset may require NO status checks, yet CI can still be red — so verify
-  // the head commit's statuses AND check runs ourselves. Any failing or pending
-  // check refuses the merge.
-  const [combined, checks] = await Promise.all([
-    getCombinedStatus(pr.head.sha),
-    getCheckRuns(pr.head.sha),
-  ]);
-
-  const badStatuses = combined.statuses
-    .filter((s) => s.state !== "success")
-    .map((s) => `${s.context} (${s.state})`);
-
-  const badChecks = checks.check_runs
-    .filter((c) => c.status !== "completed" || !["success", "neutral", "skipped"].includes(c.conclusion ?? ""))
-    .map((c) => `${c.name} (${c.status === "completed" ? c.conclusion : c.status})`);
-
-  const failing = [...badStatuses, ...badChecks];
-  if (failing.length > 0) {
-    return text(
-      `[okffs] Refusing to merge ${label}: not all checks are green. Outstanding: ${failing.join(", ")}. ` +
-        "Wait for them to pass (or fix them), then retry."
-    );
-  }
-
-  // ── Gate 5: every review thread must be resolved ──────────────────────────
-  const review = await getPullRequestReview(pr.number);
-  const unresolved = review.threads.filter((t) => !t.isResolved && t.comments.length > 0);
-  if (unresolved.length > 0) {
-    return text(
-      `[okffs] Refusing to merge ${label}: ${unresolved.length} review thread(s) still unresolved. ` +
-        "Address and resolve them (see the address_pr_review prompt), then retry."
-    );
-  }
+  // ── Gates 4–5: state, green checks, no pending review, threads resolved ──
+  // Shared with the opt-in protected-tier merge in promote_branch (#311) so both
+  // tiers refuse for identical reasons (src/pr_gates.ts).
+  const refusal = await verifyMergeable(pr, baseTier);
+  if (refusal) return text(refusal);
 
   // ── All gates passed — merge with the base-tier method ────────────────────
   const method = config.baseMergeMethod;

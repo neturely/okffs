@@ -1,3 +1,5 @@
+import { isValidAppName } from "./apps.js";
+
 // Parse a comma-separated env var into a trimmed list with empty entries
 // dropped. An unset or empty value yields []; trailing commas and whitespace-only
 // entries (e.g. "okffs," → ["okffs"], " " → []) never emit a phantom "" that would
@@ -37,10 +39,29 @@ function parseMergeMethod(envVar: string, def: MergeMethod): MergeMethod {
 // (empty ⇒ false) or `!== "false"` for default-on (empty ⇒ true), comma-lists go
 // through parseCommaList (empty/whitespace/trailing-comma ⇒ no phantom entry),
 // and parseMergeMethod falls back to its default. No env var throws on empty.
+// OKFFS_APP / OKFFS_APPS — multisite (#306/#309). OKFFS_APPS (root .env) is the
+// registry of apps in the repo (`finance,health`); OKFFS_APP (a site's .env,
+// inherited over the root's — #308) names the app THIS session runs as. When
+// set, the app name becomes the tag prefix (`finance-1.2.0`), the release-branch
+// prefix, the default branch identifier and an issue label. Both unset (every
+// single-site user) ⇒ nothing changes. An invalid name warns and is ignored.
+const multisiteApps = parseCommaList(process.env.OKFFS_APPS).map((a) => a.toLowerCase());
+const multisiteApp = ((): string | null => {
+  const raw = process.env.OKFFS_APP?.trim().toLowerCase() || null;
+  if (raw && !isValidAppName(raw)) {
+    console.warn(`[okffs] OKFFS_APP="${process.env.OKFFS_APP}" is not a valid app name (lowercase letters, digits, hyphens) — ignoring it.`);
+    return null;
+  }
+  return raw;
+})();
+
 export const config = {
+  apps: multisiteApps,
+  app: multisiteApp,
   promptForMetadata: process.env.OKFFS_PROMPT_METADATA !== "false",
   defaultAssignees: parseCommaList(process.env.OKFFS_DEFAULT_ASSIGNEES),
-  defaultLabels: parseCommaList(process.env.OKFFS_DEFAULT_LABELS),
+  // The multisite app name is always one of the default labels (#309).
+  defaultLabels: [...new Set([...parseCommaList(process.env.OKFFS_DEFAULT_LABELS), ...(multisiteApp ? [multisiteApp] : [])])],
   baseBranch: process.env.OKFFS_BASE_BRANCH || null,
   // OKFFS_PROTECTED_BRANCH — a branch okffs won't open/finalize a PR into without
   // explicit user confirmation (e.g. `main`). create_pull_request refuses to
@@ -52,7 +73,10 @@ export const config = {
   protectedBranch: process.env.OKFFS_PROTECTED_BRANCH || null,
   // OKFFS_IDENTIFIER — optional project-scoped prefix inserted into branch names:
   // {issue-number}-{identifier}-{slug} instead of {issue-number}-{slug}
-  identifier: process.env.OKFFS_IDENTIFIER || null,
+  // Defaults to the multisite app name (#309) so app branches read
+  // `42-finance-add-budget-view` without extra config; an explicit value wins.
+  identifier: process.env.OKFFS_IDENTIFIER || multisiteApp || null,
+  identifierExplicit: Boolean(process.env.OKFFS_IDENTIFIER),
   // OKFFS_BASE_MERGE_METHOD / OKFFS_PROTECTED_MERGE_METHOD — the PR merge method
   // for each branch tier: base (e.g. develop) defaults to `squash`, protected
   // (e.g. main) defaults to `merge` (merge commit). Config only — it records the
@@ -157,6 +181,23 @@ export const config = {
   // repeatedly. ⚠️ COST: enabling this with a billable reviewer incurs a charge per
   // newly-created gate PR. Re-review after new commits is a manual step. (#194)
   promotionAutoReview: process.env.OKFFS_PROMOTION_AUTO_REVIEW === "true",
+  // OKFFS_TAG_RELEASE=true — opt-in (#310): after the user merges a promotion PR,
+  // a promote_branch re-run tags the release(s) it carried — v1.2.0 (single-site)
+  // or finance-1.2.0 per app whose version changed in that promotion — on the
+  // PR's merge commit, via the git-refs API. The flag is the consent; the
+  // remaining stops are correctness (tip moved past the merge commit, tag exists
+  // elsewhere). ⚠️ A tag typically triggers CI publishing, which is irreversible.
+  tagRelease: process.env.OKFFS_TAG_RELEASE === "true",
+  // OKFFS_AUTO_MERGE_PROTECTED=true — opt-in (#311): a promote_branch RE-RUN may
+  // merge the gate PR into OKFFS_PROTECTED_BRANCH with OKFFS_PROTECTED_MERGE_METHOD,
+  // after every merge gate passes (open, non-draft, no conflicts, not behind/
+  // blocked, all statuses + check runs green, no pending requested review, every
+  // review thread resolved). Never on the call that creates the PR — the
+  // requested review must land first. Combined with OKFFS_TAG_RELEASE=true the
+  // same re-run then tags: the fully handled promotion. Default false — this
+  // reverses the #192/#211/#255 "never merge protected" invariant ONLY under
+  // this explicit opt-in.
+  autoMergeProtected: process.env.OKFFS_AUTO_MERGE_PROTECTED === "true",
 };
 
 // Warn once at startup if the feature is half-configured. Non-fatal: the
