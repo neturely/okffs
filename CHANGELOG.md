@@ -5,6 +5,12 @@ See [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.13.1] - 2026-09-18
+### Added
+- create_pull_request: scope the changelog fragment by the issue's app label when the session has no OKFFS_APP ([#330](https://github.com/neturely/okffs/issues/330))
+### Changed
+- prepare_release: optional `app` argument; refuse from a root session with a registry but no OKFFS_APP ([#332](https://github.com/neturely/okffs/issues/332))
+
 ## [0.13.0] - 2026-09-18
 **Multisite.** okffs now supports several apps in one repository — e.g. `finance/` and `health/` — sharing one issue tracker, board, branches and token while each keeps its own version, changelog, fragments, tags and release line. Alongside it, the promotion flow can now be fully handled: after the gate PR's review lands, a `promote_branch` re-run merges it and tags the release, each step an explicit opt-in. Single-site repos are unaffected — with `OKFFS_APP` / `OKFFS_APPS` unset, every path behaves exactly as before.
 
@@ -212,7 +218,8 @@ See [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `create_pull_request` commits the updated CHANGELOG onto the branch and pushes the branch before opening the PR, with non-blocking error handling ([#38](https://github.com/2b9sa2owa/okffs/issues/38)).
 - All git operations now run via `execFileSync` with argument arrays (no shell), removing command-injection risk from branch names and commit hints; tools also checkout the target branch before committing/pushing and restore the original branch afterward.
 
-[Unreleased]: https://github.com/neturely/okffs/compare/v0.13.0...HEAD
+[Unreleased]: https://github.com/neturely/okffs/compare/v0.13.1...HEAD
+[0.13.1]: https://github.com/neturely/okffs/compare/v0.13.0...v0.13.1
 [0.13.0]: https://github.com/neturely/okffs/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/neturely/okffs/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/neturely/okffs/compare/v0.10.2...v0.11.0
