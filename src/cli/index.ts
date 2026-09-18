@@ -7,7 +7,7 @@
 //   npx @neturely/okffs setup   → the package's single `okffs` bin is dist/index.js
 //                                  (the MCP server), which forwards CLI argv here.
 //   node dist/cli/index.js setup → this file run directly (local dev).
-import "dotenv/config";
+import "../env_bootstrap.js";
 import { pathToFileURL } from "node:url";
 
 import { runSetup } from "./setup.js";
