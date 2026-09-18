@@ -2,6 +2,7 @@ import { z } from "zod";
 import { createIssue, updateIssueBody, getDefaultBranch, getRef, createBranch, buildBranchName } from "../github.js";
 import { config } from "../config.js";
 import { issueAppFor } from "../multisite.js";
+import { isEpicType, epicNoBranchNote } from "../epic.js";
 import {
   boardAutoAddEnabled,
   addIssueToBoard,
@@ -97,10 +98,12 @@ export async function handler(input: z.infer<typeof inputSchema>) {
     const resolvedType = task.type ?? config.defaultType;
 
     const issue = await createIssue(task.title, taskBody, resolvedAssignees, resolvedLabels, task.milestone);
-    const branchName = buildBranchName(issue.number, task.title, taskApp.identifier);
-    await createBranch(branchName, ref.object.sha);
-    const updatedBody = `${taskBody}\n\n**Branch:** \`${branchName}\``;
-    await updateIssueBody(issue.number, updatedBody);
+    // Epics get no branch / **Branch:** line (#323).
+    const branchName: string | null = isEpicType(resolvedType) ? null : buildBranchName(issue.number, task.title, taskApp.identifier);
+    if (branchName) {
+      await createBranch(branchName, ref.object.sha);
+      await updateIssueBody(issue.number, `${taskBody}\n\n**Branch:** \`${branchName}\``);
+    }
 
     // Native Issue Type — non-fatal per task, surfaced in the entry below.
     let typeOutcome: BoardFieldOutcome | null = null;
@@ -126,7 +129,7 @@ export async function handler(input: z.infer<typeof inputSchema>) {
 
     const entryLines = [
       `#${issue.number} — ${task.title}`,
-      `  Branch: \`${branchName}\``,
+      branchName ? `  Branch: \`${branchName}\`` : `  Branch: ${epicNoBranchNote()}`,
       `  ${issue.html_url}`,
     ];
     entryLines.push(
