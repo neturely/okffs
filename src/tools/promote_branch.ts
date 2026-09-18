@@ -333,12 +333,24 @@ async function tagMergedPromotion(head: string, base: string): Promise<string | 
           section = cl ? extractChangelogSection(cl, version) : null;
           if (section) break;
         }
-        const rel = await createRelease({
-          tag: d.tag,
-          name: releaseTitle(d.app, version, d.tag),
-          body: releaseNotes(section, d.app, version),
-          prerelease: isPrereleaseVersion(version),
-        });
+        let rel: { html_url: string };
+        try {
+          rel = await createRelease({
+            tag: d.tag,
+            name: releaseTitle(d.app, version, d.tag),
+            body: releaseNotes(section, d.app, version),
+            prerelease: isPrereleaseVersion(version),
+          });
+        } catch (err) {
+          // Race with tag-triggered CI that also creates the Release (e.g. this
+          // repo's publish.yml): created between our 404 and this POST → 422
+          // "already_exists". Re-fetch and treat as the idempotent success it is.
+          const msg = err instanceof Error ? err.message : String(err);
+          const existing = /already_exists|GitHub API error 422/.test(msg) ? await getReleaseByTag(d.tag) : null;
+          if (!existing) throw err;
+          releaseLines.push(`📝 Release for ${d.tag} was created concurrently (by CI): ${existing.html_url}`);
+          continue;
+        }
         releaseLines.push(`📝 Release "${releaseTitle(d.app, version, d.tag)}" created: ${rel.html_url}${section ? "" : " (no changelog section found — fallback notes)"}`);
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);

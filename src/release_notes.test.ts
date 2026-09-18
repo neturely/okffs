@@ -29,6 +29,8 @@ test("releaseTitle, isPrereleaseVersion, releaseNotes", () => {
   assert.equal(releaseTitle("health", "0.1.0", "health-0.1.0"), "health 0.1.0");
   assert.equal(isPrereleaseVersion("0.1.0"), false);
   assert.equal(isPrereleaseVersion("1.0.0-rc.1"), true);
+  assert.equal(isPrereleaseVersion("1.0.0+build-1"), false); // build metadata, not a prerelease
+  assert.equal(isPrereleaseVersion("1.0.0-rc.1+build-2"), true);
   assert.equal(releaseNotes("body", null, "1.0.0"), "body");
   assert.match(releaseNotes(null, "health", "0.1.0"), /health\/CHANGELOG\.md/);
 });
