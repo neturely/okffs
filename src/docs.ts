@@ -79,7 +79,7 @@ export function getUnreleasedSection(changelog: string): string | null {
 export function rollChangelogForRelease(
   changelog: string,
   version: string,
-  prevVersion: string,
+  prevVersion: string | null,
   date: string,
   tagPrefix = "v"
 ): string {
@@ -99,7 +99,11 @@ export function rollChangelogForRelease(
   // Update the compare links at the bottom.
   const repoUrl = `https://github.com/${owner}/${repo}`;
   const unreleasedLink = `[Unreleased]: ${repoUrl}/compare/${tagPrefix}${version}...HEAD`;
-  const versionLink = `[${version}]: ${repoUrl}/compare/${tagPrefix}${prevVersion}...${tagPrefix}${version}`;
+  // No previous version (first release of an app / a fresh VERSION file):
+  // a compare range would 404, so link the release tag itself.
+  const versionLink = prevVersion
+    ? `[${version}]: ${repoUrl}/compare/${tagPrefix}${prevVersion}...${tagPrefix}${version}`
+    : `[${version}]: ${repoUrl}/releases/tag/${tagPrefix}${version}`;
   const versionRefExists = new RegExp(`^\\[${version.replace(/\./g, "\\.")}\\]:`, "m").test(result);
 
   if (/^\[Unreleased\]:/m.test(result)) {

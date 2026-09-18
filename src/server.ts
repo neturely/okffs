@@ -4,6 +4,8 @@
 // throws when unconfigured, which is exactly the state `okffs setup` runs in.
 // index.ts only dynamically imports this module for a bare (no-arg) invocation,
 // so the MCP server's behaviour is unchanged.
+import { config } from "./config.js";
+import { collectMultisiteWarnings } from "./multisite.js";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -138,6 +140,17 @@ function autopilotBanner(): string {
     : "";
 }
 
+// Multisite notes (#309): migration/consistency warnings for OKFFS_APP/OKFFS_APPS
+// users — never emitted for single-site. Logged once at startup and appended to
+// the instructions so the agent relays them.
+function multisiteNote(): string {
+  const warnings = collectMultisiteWarnings();
+  if (warnings.length === 0) return "";
+  for (const w of warnings) console.warn(`[okffs] ${w}`);
+  const active = config.app ? `OKFFS_APP=${config.app}` : "no OKFFS_APP";
+  return `\n\nMULTISITE (${active}; OKFFS_APPS=${config.apps.join(",") || "unset"}) — tell the user once:\n- ${warnings.join("\n- ")}`;
+}
+
 export async function startServer(): Promise<void> {
   // Adopt GitHub's canonical owner/repo before serving any tool call — after a
   // repo transfer the stale owner still works in URL paths (301 followed) but
@@ -146,7 +159,7 @@ export async function startServer(): Promise<void> {
 
   const server = new Server(
     { name: "okffs", version },
-    { capabilities: { tools: {}, prompts: {} }, instructions: SERVER_INSTRUCTIONS + upgradeNudge() + autopilotBanner() }
+    { capabilities: { tools: {}, prompts: {} }, instructions: SERVER_INSTRUCTIONS + upgradeNudge() + autopilotBanner() + multisiteNote() }
   );
 
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
