@@ -188,6 +188,16 @@ export const config = {
   // remaining stops are correctness (tip moved past the merge commit, tag exists
   // elsewhere). ⚠️ A tag typically triggers CI publishing, which is irreversible.
   tagRelease: process.env.OKFFS_TAG_RELEASE === "true",
+  // OKFFS_AUTO_MERGE_PROTECTED=true — opt-in (#311): a promote_branch RE-RUN may
+  // merge the gate PR into OKFFS_PROTECTED_BRANCH with OKFFS_PROTECTED_MERGE_METHOD,
+  // after every merge gate passes (open, non-draft, no conflicts, not behind/
+  // blocked, all statuses + check runs green, no pending requested review, every
+  // review thread resolved). Never on the call that creates the PR — the
+  // requested review must land first. Combined with OKFFS_TAG_RELEASE=true the
+  // same re-run then tags: the fully handled promotion. Default false — this
+  // reverses the #192/#211/#255 "never merge protected" invariant ONLY under
+  // this explicit opt-in.
+  autoMergeProtected: process.env.OKFFS_AUTO_MERGE_PROTECTED === "true",
 };
 
 // Warn once at startup if the feature is half-configured. Non-fatal: the
