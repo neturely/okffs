@@ -312,8 +312,9 @@ export async function handler(input: z.infer<typeof inputSchema>) {
 
   // Say where the changelog fragment went and why (#330) — the one place a
   // multisite user can catch a mis-scoped fragment before release time.
-  const fragmentNote = updatedDocs.length > 0
-    ? `\nChangelog fragment: ${updatedDocs.find((f) => f.includes(".changes")) ?? updatedDocs[0]}` +
+  const fragmentPath = updatedDocs.find((f) => f.includes(".changes"));
+  const fragmentNote = fragmentPath
+    ? `\nChangelog fragment: ${fragmentPath}` +
       (fragmentRoot.source === "label" ? ` (app "${fragmentRoot.app}" from the issue's label)` : fragmentRoot.source === "session" ? ` (app "${fragmentRoot.app}" from OKFFS_APP)` : "")
     : "";
 
