@@ -5,7 +5,8 @@ import { createPullRequest, getDefaultBranch } from "../github.js";
 import { getUnreleasedSection, rollChangelogForRelease, foldFragmentsIntoChangelog } from "../docs.js";
 import { bumpVersion } from "../version.js";
 import { readVersionSource, writeVersionBump } from "../version_source.js";
-import { resolveApp, tagName, releaseBranchName } from "../apps.js";
+import { tagName, releaseBranchName } from "../apps.js";
+import { activeApp } from "../multisite.js";
 import { git, currentBranch } from "../git.js";
 import { config } from "../config.js";
 
@@ -25,8 +26,8 @@ export const inputSchema = z.object({
 // descriptor in apps.ts (#307) — all pure/fs-only and unit-tested.
 
 export async function handler(input: z.infer<typeof inputSchema>) {
-  // #309 wires OKFFS_APP here; until then this is always the single-site descriptor.
-  const app = resolveApp();
+  // The session's OKFFS_APP (#309), or the single-site descriptor.
+  const app = activeApp();
   const base = path.resolve(process.cwd(), app.root);
   const clPath = path.join(base, app.changelogPath);
   const clName = app.changelogPath;
@@ -126,7 +127,10 @@ export async function handler(input: z.infer<typeof inputSchema>) {
     // Compute the changelog before any write so a failure can't leave a partial
     // bump on disk (writeVersionBump validates all of its files up front too).
     const applyFold = foldFragmentsIntoChangelog(clRaw, base, app.fragmentsDir);
-    const newCl = rollChangelogForRelease(applyFold.changelog, targetVersion, fromVersion, date, app.tagPrefix);
+    // A first release (no version file yet) has no previous tag to compare
+    // against — link the release tag instead of a broken compare range.
+    const prevForLink = baseSource.kind === "none" ? null : fromVersion;
+    const newCl = rollChangelogForRelease(applyFold.changelog, targetVersion, prevForLink, date, app.tagPrefix);
 
     bumpedFiles = writeVersionBump(base, baseSource, fromVersion, targetVersion);
     fs.writeFileSync(clPath, newCl);
