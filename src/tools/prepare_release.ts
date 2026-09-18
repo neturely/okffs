@@ -3,14 +3,16 @@ import fs from "fs";
 import path from "path";
 import { createPullRequest, getDefaultBranch } from "../github.js";
 import { getUnreleasedSection, rollChangelogForRelease, foldFragmentsIntoChangelog } from "../docs.js";
-import { bumpVersion, replaceExactly } from "../version.js";
+import { bumpVersion } from "../version.js";
+import { readVersionSource, writeVersionBump } from "../version_source.js";
+import { resolveApp, tagName, releaseBranchName } from "../apps.js";
 import { git, currentBranch } from "../git.js";
 import { config } from "../config.js";
 
 export const name = "prepare_release";
 
 export const description =
-  "Prepare a release: bump the version in package.json and package-lock.json, roll the CHANGELOG ([Unreleased] → a dated version section with a fresh empty [Unreleased] and updated compare links), commit on a release branch, and open a PR. It does NOT tag or publish — tagging vX.Y.Z (which triggers the CI npm publish) stays a manual step after merge. Provide an explicit `version` or a `bump` level; if neither is given, a level is inferred from the [Unreleased] entries (### Added → minor, otherwise patch) and surfaced for confirmation. Two-step: call once to preview, re-call with confirmed: true to apply.";
+  "Prepare a release: bump the version (package.json + package-lock.json when present, else a plain VERSION file — created on the first release if neither exists), roll the CHANGELOG ([Unreleased] → a dated version section with a fresh empty [Unreleased] and updated compare links), commit on a release branch, and open a PR. It does NOT tag or publish — tagging (which triggers the CI npm publish) stays a manual step after merge. Provide an explicit `version` or a `bump` level; if neither is given, a level is inferred from the [Unreleased] entries (### Added → minor, otherwise patch) and surfaced for confirmation. Two-step: call once to preview, re-call with confirmed: true to apply.";
 
 export const inputSchema = z.object({
   version: z.string().optional().describe("Explicit target version, e.g. 0.1.7 (takes precedence over bump)"),
@@ -18,24 +20,40 @@ export const inputSchema = z.object({
   confirmed: z.boolean().optional().describe("Must be true to apply (otherwise previews)"),
 });
 
-// bumpVersion and replaceExactly live in version.ts (pure, unit-testable — #259).
+// bumpVersion lives in version.ts; the version source (package.json / VERSION)
+// in version_source.ts; paths, tag and branch names come from the app
+// descriptor in apps.ts (#307) — all pure/fs-only and unit-tested.
 
 export async function handler(input: z.infer<typeof inputSchema>) {
-  const base = process.cwd();
-  const pkg = JSON.parse(fs.readFileSync(path.join(base, "package.json"), "utf8"));
-  const currentVersion: string = pkg.version;
+  // #309 wires OKFFS_APP here; until then this is always the single-site descriptor.
+  const app = resolveApp();
+  const base = path.resolve(process.cwd(), app.root);
+  const clPath = path.join(base, app.changelogPath);
+  const clName = app.changelogPath;
 
-  const changelogRaw = fs.readFileSync(path.join(base, "CHANGELOG.md"), "utf8");
+  let source;
+  try {
+    source = readVersionSource(base);
+  } catch (err) {
+    return { content: [{ type: "text" as const, text: `Cannot resolve the current version: ${err instanceof Error ? err.message : String(err)}` }] };
+  }
+  const currentVersion = source.version;
+  const versionNote = source.note ? `\n⚠ ${source.note}` : "";
+
+  if (!fs.existsSync(clPath)) {
+    return { content: [{ type: "text" as const, text: `${clName} not found under ${app.root} — nothing to release.` }] };
+  }
+  const changelogRaw = fs.readFileSync(clPath, "utf8");
   // Fold any per-issue fragments (#105) into [Unreleased] before the emptiness
-  // and bump-level checks, so entries that live in .changes/unreleased/ count.
-  const previewFold = foldFragmentsIntoChangelog(changelogRaw, base);
+  // and bump-level checks, so entries that live in the fragments dir count.
+  const previewFold = foldFragmentsIntoChangelog(changelogRaw, base, app.fragmentsDir);
   const changelog = previewFold.changelog;
   const unreleased = getUnreleasedSection(changelog);
   if (unreleased === null) {
-    return { content: [{ type: "text" as const, text: "CHANGELOG.md has no ## [Unreleased] section — nothing to release." }] };
+    return { content: [{ type: "text" as const, text: `${clName} has no ## [Unreleased] section — nothing to release.` }] };
   }
   if (!/^[-*] /m.test(unreleased)) {
-    return { content: [{ type: "text" as const, text: "The ## [Unreleased] section has no entries (and no .changes/unreleased fragments) — nothing to release." }] };
+    return { content: [{ type: "text" as const, text: `The ## [Unreleased] section has no entries (and no ${app.fragmentsDir} fragments) — nothing to release.` }] };
   }
 
   // Resolve the target version.
@@ -53,18 +71,21 @@ export async function handler(input: z.infer<typeof inputSchema>) {
     how = input.bump ? `${level} bump` : `inferred ${level} bump (### Added present → minor, else patch)`;
   }
 
-  const branch = `release/${targetVersion}`;
+  const branch = releaseBranchName(app, targetVersion);
+  const tag = tagName(app, targetVersion);
+  const versionFiles = source.files.join(" + ");
 
   if (!input.confirmed) {
     return {
       content: [{
         type: "text" as const,
         text:
-          `Release preview\n` +
-          `  current: ${currentVersion}\n` +
+          `Release preview${app.name ? ` (app: ${app.name})` : ""}\n` +
+          `  current: ${currentVersion}  (${source.kind === "none" ? "no version file yet" : source.kind})\n` +
           `  target:  ${targetVersion}  (${how})\n` +
-          `  branch:  ${branch}\n\n` +
-          `Will: bump package.json + package-lock.json, roll the CHANGELOG into "## [${targetVersion}]", ` +
+          `  branch:  ${branch}\n` +
+          `  tag:     ${tag} (after merge, by you)${versionNote}\n\n` +
+          `Will: bump ${versionFiles}, roll ${clName} into "## [${targetVersion}]", ` +
           (previewFold.count > 0 ? `assemble ${previewFold.count} changelog fragment(s) and delete them, ` : ``) +
           `commit on ${branch}, and open a PR. It will NOT tag or publish.\n\n` +
           `[Unreleased] entries to be released${previewFold.count > 0 ? " (fragments included)" : ""}:\n${unreleased}\n\n` +
@@ -77,19 +98,15 @@ export async function handler(input: z.infer<typeof inputSchema>) {
   const previousBranch = currentBranch();
   let prepared = false;
   let fragmentsAssembled = 0;
+  let bumpedFiles: string[] = [];
   try {
     git(["fetch", "origin"]);
     git(["checkout", "-B", branch, `origin/${baseBranch}`]);
 
     // Re-read on the base branch so edits apply to the correct content.
-    const pkgPath = path.join(base, "package.json");
-    const lockPath = path.join(base, "package-lock.json");
-    const clPath = path.join(base, "CHANGELOG.md");
-
-    const pkgRaw = fs.readFileSync(pkgPath, "utf8");
-    const lockRaw = fs.readFileSync(lockPath, "utf8");
+    const baseSource = readVersionSource(base);
     const clRaw = fs.readFileSync(clPath, "utf8");
-    const fromVersion: string = JSON.parse(pkgRaw).version;
+    const fromVersion = baseSource.version;
 
     // The preview computed targetVersion from the working tree's version. If the
     // base branch is actually at a different version and no explicit version was
@@ -103,27 +120,25 @@ export async function handler(input: z.infer<typeof inputSchema>) {
 
     const date = new Date().toISOString().slice(0, 10);
 
-    // Compute all new contents up front (with validation) so a failure can't
-    // leave a partial bump written to disk. Targeted version-field edits avoid
-    // reformatting; package-lock has two self-version fields (root + packages[""]).
-    const newPkg = replaceExactly(pkgRaw, `"version": "${fromVersion}"`, `"version": "${targetVersion}"`, 1, "package.json");
-    const newLock = replaceExactly(lockRaw, `"version": "${fromVersion}"`, `"version": "${targetVersion}"`, 2, "package-lock.json");
     // Assemble fragments from the base branch's working tree, then roll. The
     // fragments were committed on their issue branches and merged into base, so
     // they're present here; we delete them in the same release commit (#105).
-    const applyFold = foldFragmentsIntoChangelog(clRaw, base);
-    const newCl = rollChangelogForRelease(applyFold.changelog, targetVersion, fromVersion, date);
+    // Compute the changelog before any write so a failure can't leave a partial
+    // bump on disk (writeVersionBump validates all of its files up front too).
+    const applyFold = foldFragmentsIntoChangelog(clRaw, base, app.fragmentsDir);
+    const newCl = rollChangelogForRelease(applyFold.changelog, targetVersion, fromVersion, date, app.tagPrefix);
 
-    fs.writeFileSync(pkgPath, newPkg);
-    fs.writeFileSync(lockPath, newLock);
+    bumpedFiles = writeVersionBump(base, baseSource, fromVersion, targetVersion);
     fs.writeFileSync(clPath, newCl);
 
     fragmentsAssembled = applyFold.consumed.length;
+    // git runs from cwd; stage by cwd-relative paths so an app root works too.
+    const rel = (p: string) => path.relative(process.cwd(), path.join(base, p));
     if (applyFold.consumed.length > 0) {
-      git(["rm", "--quiet", "--", ...applyFold.consumed]);
+      git(["rm", "--quiet", "--", ...applyFold.consumed.map(rel)]);
     }
-    git(["add", "package.json", "package-lock.json", "CHANGELOG.md"]);
-    git(["commit", "-m", `release: ${targetVersion}`]);
+    git(["add", "--", ...bumpedFiles.map(rel), rel(app.changelogPath)]);
+    git(["commit", "-m", app.name ? `release: ${app.name} ${targetVersion}` : `release: ${targetVersion}`]);
     git(["push", "-u", "origin", branch]);
     prepared = true;
   } catch (err) {
@@ -144,31 +159,32 @@ export async function handler(input: z.infer<typeof inputSchema>) {
     return { content: [{ type: "text" as const, text: "Release prep did not complete." }] };
   }
 
+  const bumpedList = bumpedFiles.map((f) => `\`${f}\``).join(" and ");
   const prBody = [
-    `## Release ${targetVersion}`,
+    `## Release ${app.name ? `${app.name} ` : ""}${targetVersion}`,
     ``,
-    `- Bumped \`package.json\` and \`package-lock.json\` to ${targetVersion}.`,
-    `- Rolled the CHANGELOG \`[Unreleased]\` section into \`## [${targetVersion}]\` and refreshed the compare links.`,
+    `- Bumped ${bumpedList} to ${targetVersion}.${source.kind === "none" ? " (Created VERSION — no package.json in this app.)" : ""}`,
+    `- Rolled the ${clName} \`[Unreleased]\` section into \`## [${targetVersion}]\` and refreshed the compare links.`,
     ...(fragmentsAssembled > 0
-      ? [`- Assembled and removed ${fragmentsAssembled} changelog fragment(s) from \`.changes/unreleased/\`.`]
+      ? [`- Assembled and removed ${fragmentsAssembled} changelog fragment(s) from \`${app.fragmentsDir}/\`.`]
       : []),
     ``,
-    `After merging, tag \`v${targetVersion}\` and push it — CI (\`publish.yml\`) publishes to npm on the tag. This PR does not tag or publish.`,
+    `After merging, tag \`${tag}\` and push it — CI publishes on the tag. This PR does not tag or publish.`,
   ].join("\n");
 
   let pr: { number: number; html_url: string };
   try {
-    pr = await createPullRequest(`Release ${targetVersion}`, prBody, branch, baseBranch);
+    pr = await createPullRequest(`Release ${app.name ? `${app.name} ` : ""}${targetVersion}`, prBody, branch, baseBranch);
   } catch (err) {
     // The release branch is already pushed; only PR creation failed.
     return {
       content: [{
         type: "text" as const,
         text:
-          `Release branch \`${branch}\` was prepared and pushed (version ${targetVersion}, CHANGELOG rolled), ` +
+          `Release branch \`${branch}\` was prepared and pushed (version ${targetVersion}, ${clName} rolled), ` +
           `but opening the PR failed: ${err instanceof Error ? err.message : String(err)}\n\n` +
           `Open a PR from \`${branch}\` into \`${baseBranch}\` manually (e.g. \`gh pr create --base ${baseBranch} --head ${branch}\`). ` +
-          `After it merges, tag \`v${targetVersion}\` and push it to trigger the CI publish.`,
+          `After it merges, tag \`${tag}\` and push it to trigger the CI publish.`,
       }],
     };
   }
@@ -181,7 +197,7 @@ export async function handler(input: z.infer<typeof inputSchema>) {
   // asserting the release merges into the protected branch.
   const protectedNote = config.protectedBranch
     ? `\n\n⛔ OKFFS_PROTECTED_BRANCH is \`${config.protectedBranch}\`. If you plan to promote this ` +
-      `release into \`${config.protectedBranch}\` and tag \`v${targetVersion}\` (which triggers the npm ` +
+      `release into \`${config.protectedBranch}\` and tag \`${tag}\` (which triggers the npm ` +
       `publish), those are USER-GATED steps — hand back to the user for the check and sign-off; ` +
       `do not proceed autonomously.`
     : "";
@@ -190,9 +206,9 @@ export async function handler(input: z.infer<typeof inputSchema>) {
     content: [{
       type: "text" as const,
       text:
-        `Prepared release ${targetVersion} (from ${currentVersion}).\n` +
+        `Prepared release ${targetVersion} (from ${currentVersion}).${versionNote}\n` +
         `Branch: ${branch}\nPR: ${pr.html_url}\n\n` +
-        `Next: review & merge the PR, then tag \`v${targetVersion}\` and push it — CI publishes to npm. ` +
+        `Next: review & merge the PR, then tag \`${tag}\` and push it — CI publishes to npm. ` +
         `prepare_release does not tag or publish.` +
         protectedNote,
     }],
