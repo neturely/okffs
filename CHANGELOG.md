@@ -5,6 +5,12 @@ See [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.13.2] - 2026-09-18
+### Added
+- promote_branch: create the GitHub Release entry for each tag it creates ([#337](https://github.com/neturely/okffs/issues/337))
+### Fixed
+- prepare_release: link the section to the release page when the previous version has no tag under the app's prefix ([#339](https://github.com/neturely/okffs/issues/339))
+
 ## [0.13.1] - 2026-09-18
 ### Added
 - create_pull_request: scope the changelog fragment by the issue's app label when the session has no OKFFS_APP ([#330](https://github.com/neturely/okffs/issues/330))
@@ -218,7 +224,8 @@ See [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `create_pull_request` commits the updated CHANGELOG onto the branch and pushes the branch before opening the PR, with non-blocking error handling ([#38](https://github.com/2b9sa2owa/okffs/issues/38)).
 - All git operations now run via `execFileSync` with argument arrays (no shell), removing command-injection risk from branch names and commit hints; tools also checkout the target branch before committing/pushing and restore the original branch afterward.
 
-[Unreleased]: https://github.com/neturely/okffs/compare/v0.13.1...HEAD
+[Unreleased]: https://github.com/neturely/okffs/compare/v0.13.2...HEAD
+[0.13.2]: https://github.com/neturely/okffs/compare/v0.13.1...v0.13.2
 [0.13.1]: https://github.com/neturely/okffs/compare/v0.13.0...v0.13.1
 [0.13.0]: https://github.com/neturely/okffs/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/neturely/okffs/compare/v0.11.0...v0.12.0
