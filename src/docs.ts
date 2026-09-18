@@ -18,6 +18,8 @@ export interface DocsContext {
   issueTitle?: string;
   summary: string;
   branchName?: string;
+  /** Directory (relative to cwd) the changelog fragment goes under; "." / unset = cwd (#330). */
+  appRoot?: string;
 }
 
 interface FileUpdate {
@@ -197,7 +199,7 @@ function buildFragment(ctx: DocsContext): { relPath: string; content: string } {
   // Prefix with the issue number when present — that alone guarantees a distinct
   // filename per issue, which is what eliminates the cross-branch conflict.
   const baseName = ctx.issueNumber ? `${ctx.issueNumber}-${slug}` : slug;
-  const relPath = path.join(FRAGMENT_DIR, `${baseName}.md`);
+  const relPath = path.join(ctx.appRoot && ctx.appRoot !== "." ? ctx.appRoot : "", FRAGMENT_DIR, `${baseName}.md`);
   const content = `<!-- okffs:type=${type} -->\n${entry}\n`;
   return { relPath, content };
 }

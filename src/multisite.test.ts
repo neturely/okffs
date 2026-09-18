@@ -48,6 +48,22 @@ test("multisite warnings: registry/app mismatches and orphaned root fragments", 
   assert.deepEqual(multisiteWarnings({ app: "finance", apps: ["finance", "health"], inAppDir: true, rootFragmentCount: 0 }), []);
 });
 
+test("fragmentRootFor: session app wins, else the issue's app label, else cwd", async () => {
+  const { fragmentRootFor } = await import("./multisite.js");
+  const apps = ["finance", "health"];
+  // Session app: cwd is the app root.
+  assert.deepEqual(fragmentRootFor({ sessionApp: "finance", apps, labels: [{ name: "health" }], cwdFromGitRoot: "finance" }), { root: ".", app: "finance", source: "session" });
+  // Root session, issue labelled health → health/ under the git root.
+  assert.deepEqual(fragmentRootFor({ sessionApp: null, apps, labels: [{ name: "okffs" }, { name: "health" }], cwdFromGitRoot: "" }), { root: "health", app: "health", source: "label" });
+  // Session below the root (no OKFFS_APP): climb out first.
+  assert.deepEqual(fragmentRootFor({ sessionApp: null, apps, labels: ["health"], cwdFromGitRoot: "tools/scripts" }), { root: "../../health", app: "health", source: "label" });
+  // Already inside that app's dir without OKFFS_APP → stay put.
+  assert.deepEqual(fragmentRootFor({ sessionApp: null, apps, labels: ["health"], cwdFromGitRoot: "health" }), { root: ".", app: "health", source: "label" });
+  // No app label, or no registry → cwd (single-site behaviour).
+  assert.deepEqual(fragmentRootFor({ sessionApp: null, apps, labels: [{ name: "bug" }], cwdFromGitRoot: "" }), { root: ".", app: null, source: "none" });
+  assert.deepEqual(fragmentRootFor({ sessionApp: null, apps: [], labels: [{ name: "health" }], cwdFromGitRoot: "" }), { root: ".", app: null, source: "none" });
+});
+
 test("appFromLabels matches a registered app from label objects or strings", async () => {
   const { appFromLabels } = await import("./multisite.js");
   assert.equal(appFromLabels([{ name: "okffs" }, { name: "Finance" }], ["finance", "health"]), "finance");

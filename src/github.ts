@@ -291,7 +291,7 @@ export async function closeIssue(issueNumber: number): Promise<void> {
   });
 }
 
-export async function getIssue(issueNumber: number): Promise<{ number: number; title: string; html_url: string; body: string | null; node_id: string; type?: { name: string } | null }> {
+export async function getIssue(issueNumber: number): Promise<{ number: number; title: string; html_url: string; body: string | null; node_id: string; type?: { name: string } | null; labels?: Array<{ name: string } | string> }> {
   return request(`/repos/${owner}/${repo}/issues/${issueNumber}`);
 }
 
