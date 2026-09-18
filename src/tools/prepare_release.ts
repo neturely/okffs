@@ -1,7 +1,7 @@
 import { z } from "zod";
 import fs from "fs";
 import path from "path";
-import { createPullRequest, getDefaultBranch } from "../github.js";
+import { createPullRequest, getDefaultBranch, getTagSha } from "../github.js";
 import { getUnreleasedSection, rollChangelogForRelease, foldFragmentsIntoChangelog } from "../docs.js";
 import { bumpVersion } from "../version.js";
 import { readVersionSource, writeVersionBump } from "../version_source.js";
@@ -108,6 +108,7 @@ export async function handler(input: z.infer<typeof inputSchema>) {
   let prepared = false;
   let fragmentsAssembled = 0;
   let bumpedFiles: string[] = [];
+  let linkNote = "";
   try {
     git(["fetch", "origin"]);
     git(["checkout", "-B", branch, `origin/${baseBranch}`]);
@@ -137,7 +138,20 @@ export async function handler(input: z.infer<typeof inputSchema>) {
     const applyFold = foldFragmentsIntoChangelog(clRaw, base, app.fragmentsDir);
     // A first release (no version file yet) has no previous tag to compare
     // against — link the release tag instead of a broken compare range.
-    const prevForLink = baseSource.kind === "none" ? null : fromVersion;
+    // A compare range needs BOTH tags to exist. The previous version may have no
+    // tag under this prefix (an app's first prefixed release after v-tag history,
+    // a repo that never tagged, or no version file at all) — link the release
+    // page instead (#339). Best-effort: on an API error assume the tag exists.
+    let prevTagExists = baseSource.kind !== "none";
+    if (prevTagExists) {
+      try {
+        prevTagExists = (await getTagSha(tagName(app, fromVersion))) !== null;
+      } catch {
+        prevTagExists = true;
+      }
+    }
+    const prevForLink = prevTagExists ? fromVersion : null;
+    if (!prevTagExists) linkNote = `No \`${tagName(app, fromVersion)}\` tag exists, so the \`[${targetVersion}]\` section links the release page instead of a compare range.`;
     const newCl = rollChangelogForRelease(applyFold.changelog, targetVersion, prevForLink, date, app.tagPrefix);
 
     bumpedFiles = writeVersionBump(base, baseSource, fromVersion, targetVersion);
@@ -220,7 +234,7 @@ export async function handler(input: z.infer<typeof inputSchema>) {
     content: [{
       type: "text" as const,
       text:
-        `Prepared release ${targetVersion} (from ${currentVersion}).${versionNote}\n` +
+        `Prepared release ${targetVersion} (from ${currentVersion}).${versionNote}${linkNote ? `\nℹ ${linkNote}` : ""}\n` +
         `Branch: ${branch}\nPR: ${pr.html_url}\n\n` +
         `Next: review & merge the PR, then tag \`${tag}\` and push it — CI publishes to npm. ` +
         `prepare_release does not tag or publish.` +
