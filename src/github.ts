@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { config } from "./config.js";
-import { isPrCreateRaceError } from "./github_errors.js";
+import { isPrCreateRaceError, describeFetchError, isNetworkRequestError } from "./github_errors.js";
 import { parseOwnerRepo } from "./remote.js";
 
 const BASE = "https://api.github.com";
@@ -114,8 +114,7 @@ async function timedFetch(url: string, options: RequestInit, retryable: boolean)
       return await fetch(url, { ...options, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
     } catch (err) {
       if (retryable && attempt === 0) continue;
-      const msg = err instanceof Error ? err.message : String(err);
-      throw new Error(`GitHub request to ${url} failed: ${msg}`);
+      throw new Error(`GitHub request to ${url} failed: ${describeFetchError(err)}`);
     }
   }
 }
@@ -367,12 +366,36 @@ export async function getIssueComments(issueNumber: number): Promise<Array<{ bod
 // here so existing importers keep working.
 export { summarizeGitHubError } from "./github_errors.js";
 
-async function withPrCreateRetry<T>(fn: () => Promise<T>, attempts = 4, delayMs = 1500): Promise<T> {
+// A network-level failure (no HTTP response, e.g. a dropped keep-alive socket)
+// gets one retry too (#345). The POST may still have landed, so first look for
+// an open PR on head→base and return it if found; only otherwise re-POST.
+async function withPrCreateRetry<T>(
+  fn: () => Promise<T>,
+  head: string,
+  base: string,
+  attempts = 4,
+  delayMs = 1500
+): Promise<T> {
+  let networkRetried = false;
   for (let attempt = 1; ; attempt++) {
     try {
       return await fn();
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+      if (isNetworkRequestError(msg) && !networkRetried) {
+        networkRetried = true;
+        console.warn(`[okffs] PR creation failed at the network level (${msg}) — checking for the PR, then retrying once.`);
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+        let existing: Awaited<ReturnType<typeof getOpenPullRequestForBranch>>;
+        try {
+          existing = await getOpenPullRequestForBranch(head, base);
+        } catch {
+          throw err; // can't tell whether the POST landed — don't risk a duplicate attempt
+        }
+        if (existing) return existing as unknown as T;
+        attempt--; // the network retry doesn't consume a race-retry attempt
+        continue;
+      }
       if (!isPrCreateRaceError(msg) || attempt >= attempts) throw err;
       console.warn(
         `[okffs] PR creation hit the push→POST indexing race (422) — retry ${attempt}/${attempts - 1} in ${delayMs}ms.`
@@ -392,7 +415,9 @@ export async function createPullRequest(
     request(`/repos/${owner}/${repo}/pulls`, {
       method: "POST",
       body: JSON.stringify({ title, head, base, body }),
-    })
+    }),
+    head,
+    base
   );
 }
 
@@ -512,7 +537,9 @@ export async function createDraftPullRequest(
     request(`/repos/${owner}/${repo}/pulls`, {
       method: "POST",
       body: JSON.stringify({ title, head, base, body, draft: true }),
-    })
+    }),
+    head,
+    base
   );
 }
 
