@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { summarizeGitHubError, isPrCreateRaceError } from "./github_errors.js";
+import { summarizeGitHubError, isPrCreateRaceError, describeFetchError, isNetworkRequestError } from "./github_errors.js";
 
 const apiError = (status: number, body: unknown) =>
   new Error(`GitHub API error ${status}: ${JSON.stringify(body)}`);
@@ -75,4 +75,33 @@ test("isPrCreateRaceError does NOT match permanent 422s or other statuses", () =
     isPrCreateRaceError('GitHub API error 403: {"message":"no commits between? nope"}'),
     false
   );
+});
+
+const fetchFailed = (cause?: unknown) => Object.assign(new TypeError("fetch failed"), { cause });
+
+test("describeFetchError appends the undici cause code and message", () => {
+  const cause = Object.assign(new Error("other side closed"), { code: "UND_ERR_SOCKET" });
+  assert.equal(describeFetchError(fetchFailed(cause)), "fetch failed (UND_ERR_SOCKET: other side closed)");
+});
+
+test("describeFetchError does not repeat a code already in the cause message", () => {
+  const cause = Object.assign(new Error("read ECONNRESET"), { code: "ECONNRESET" });
+  assert.equal(describeFetchError(fetchFailed(cause)), "fetch failed (read ECONNRESET)");
+});
+
+test("describeFetchError handles a code-only cause and a missing cause", () => {
+  assert.equal(describeFetchError(fetchFailed({ code: "ETIMEDOUT" })), "fetch failed (ETIMEDOUT)");
+  assert.equal(describeFetchError(fetchFailed()), "fetch failed");
+  assert.equal(describeFetchError("boom"), "boom");
+});
+
+test("describeFetchError names an AbortSignal timeout", () => {
+  const err = new DOMException("The operation was aborted due to timeout", "TimeoutError");
+  assert.equal(describeFetchError(err), "timed out (The operation was aborted due to timeout)");
+});
+
+test("isNetworkRequestError matches timedFetch failures, not HTTP errors", () => {
+  assert.equal(isNetworkRequestError("GitHub request to https://api.github.com/x failed: fetch failed"), true);
+  assert.equal(isNetworkRequestError("GitHub API error 502: Bad Gateway"), false);
+  assert.equal(isNetworkRequestError("GitHub API error 422: {\"message\":\"x failed: y\"}"), false);
 });
