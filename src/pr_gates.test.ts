@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mergeabilityRefusal, outstandingChecks, pendingReviewers, unresolvedThreadCount } from "./pr_gates.js";
+import { mergeabilityRefusal, outstandingChecks, pendingReviewers, retargetRefusal, unresolvedThreadCount } from "./pr_gates.js";
 
 const pr = (over: Record<string, unknown> = {}) => ({
   number: 5,
@@ -50,4 +50,9 @@ test("pendingReviewers and unresolvedThreadCount", () => {
     { id: "3", isResolved: false, comments: [] }, // empty thread doesn't count
   ];
   assert.equal(unresolvedThreadCount({ threads }), 1);
+});
+
+test("retargetRefusal refuses a PR whose base changed during the wait", () => {
+  assert.equal(retargetRefusal(pr({ base: { ref: "develop" } }), pr({ base: { ref: "develop" } })), null);
+  assert.match(retargetRefusal(pr({ base: { ref: "develop" } }), pr({ base: { ref: "main" } })) ?? "", /retargeted from `develop` to `main`/);
 });

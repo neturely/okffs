@@ -54,6 +54,12 @@ export function outstandingChecks(combined: CombinedStatus, checks: CheckRunsRes
   return [...badStatuses, ...badChecks];
 }
 
+/** Refusal when the PR's base changed between validation and merge (e.g. during a wait), else null. Pure. */
+export function retargetRefusal(before: PrLike, after: PrLike): string | null {
+  if (after.base.ref === before.base.ref) return null;
+  return `[okffs] Refusing to merge ${prLabel(after)}: it was retargeted from \`${before.base.ref}\` to \`${after.base.ref}\` while waiting for checks. Nothing merged — re-run so the target is validated again.`;
+}
+
 /** Reviewers (users and teams) whose requested review has not been submitted yet. Pure. */
 export function pendingReviewers(pr: PrLike): string[] {
   return [...(pr.requested_reviewers ?? []).map((r) => r.login), ...(pr.requested_teams ?? []).map((t) => `team:${t.slug}`)];
@@ -93,6 +99,10 @@ export async function verifyMergeableWithWait(pr: PrLike, baseTier: string, opts
     return waitRefusal(prLabel(pr), outcome, opts.retryHint ?? "re-run with wait_for_checks to keep waiting.");
   }
   const fresh = opts.refetch ? await opts.refetch() : pr;
+  // The caller validated the target tier BEFORE the wait; a PR retargeted
+  // during it (e.g. to the protected branch) must not ride that validation.
+  const retarget = retargetRefusal(pr, fresh);
+  if (retarget) return retarget;
   return verifyMergeable(fresh, baseTier);
 }
 
