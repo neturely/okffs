@@ -55,6 +55,29 @@ test("waitForChecks gives up at the deadline without oversleeping", async () => 
   assert.equal(clock.slept(), 25_000);
 });
 
+test("waitForChecks treats zero checks as pending during the grace window (#351)", async () => {
+  const clock = fakeClock();
+  const seq = [snap([]), snap([run("audit", "queued")]), snap([run("audit", "completed", "success")])];
+  let i = 0;
+  const out = await waitForChecks(90, { fetch: async () => seq[Math.min(i++, seq.length - 1)], ...clock, intervalMs: 10_000, noChecksGraceMs: 20_000 });
+  assert.equal(out.state, "green");
+  assert.equal(i, 3); // did not accept the empty first snapshot
+});
+
+test("waitForChecks accepts zero checks as green once the grace has passed", async () => {
+  const clock = fakeClock();
+  const out = await waitForChecks(90, { fetch: async () => snap([]), ...clock, intervalMs: 10_000, noChecksGraceMs: 20_000 });
+  assert.equal(out.state, "green");
+  assert.equal(clock.slept(), 20_000);
+});
+
+test("waitForChecks reports unregistered checks when the timeout is shorter than the grace", async () => {
+  const clock = fakeClock();
+  const out = await waitForChecks(5, { fetch: async () => snap([]), ...clock, noChecksGraceMs: 20_000 });
+  assert.equal(out.state, "pending");
+  if (out.state === "pending") assert.deepEqual(out.pending, ["(no checks registered yet)"]);
+});
+
 test("waitForChecks with zero timeout checks once", async () => {
   const clock = fakeClock();
   let calls = 0;
