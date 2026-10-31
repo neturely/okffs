@@ -5,6 +5,16 @@ See [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-10-31
+### Fixed
+- wait_for_checks: grace period when no checks are registered yet ([#351](https://github.com/neturely/okffs/issues/351))
+- Surface fetch-failed cause and retry PR creation on network errors ([#345](https://github.com/neturely/okffs/issues/345))
+### Added
+- get_pr_checks: report a PR's check runs with failing job log tails ([#348](https://github.com/neturely/okffs/issues/348))
+- merge_pull_request: wait_for_checks option to wait for pending checks ([#347](https://github.com/neturely/okffs/issues/347))
+### Changed
+- CI: run npm test on pull requests ([#353](https://github.com/neturely/okffs/issues/353))
+
 ## [0.13.2] - 2026-09-18
 ### Added
 - promote_branch: create the GitHub Release entry for each tag it creates ([#337](https://github.com/neturely/okffs/issues/337))
@@ -224,7 +234,8 @@ See [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `create_pull_request` commits the updated CHANGELOG onto the branch and pushes the branch before opening the PR, with non-blocking error handling ([#38](https://github.com/2b9sa2owa/okffs/issues/38)).
 - All git operations now run via `execFileSync` with argument arrays (no shell), removing command-injection risk from branch names and commit hints; tools also checkout the target branch before committing/pushing and restore the original branch afterward.
 
-[Unreleased]: https://github.com/neturely/okffs/compare/v0.13.2...HEAD
+[Unreleased]: https://github.com/neturely/okffs/compare/v0.14.0...HEAD
+[0.14.0]: https://github.com/neturely/okffs/compare/v0.13.2...v0.14.0
 [0.13.2]: https://github.com/neturely/okffs/compare/v0.13.1...v0.13.2
 [0.13.1]: https://github.com/neturely/okffs/compare/v0.13.0...v0.13.1
 [0.13.0]: https://github.com/neturely/okffs/compare/v0.12.0...v0.13.0
