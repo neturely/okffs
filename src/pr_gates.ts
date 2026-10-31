@@ -13,6 +13,7 @@ import {
   type CheckRunsResult,
   type PullRequestReview,
 } from "./github.js";
+import { waitForChecks, clampWaitSeconds, waitRefusal } from "./check_wait.js";
 
 export type PrLike = Pick<PullRequestDetail, "number" | "state" | "draft" | "merged" | "mergeable" | "mergeable_state" | "head" | "base"> & {
   requested_reviewers?: Array<{ login: string }>;
@@ -63,6 +64,38 @@ export function unresolvedThreadCount(review: Pick<PullRequestReview, "threads">
   return review.threads.filter((t) => !t.isResolved && t.comments.length > 0).length;
 }
 
+export interface CheckWaitOptions {
+  /** Wait (bounded) for pending checks before evaluating the gates (#347). */
+  wait?: boolean;
+  /** Requested wait in seconds; defaulted and capped by clampWaitSeconds. */
+  timeoutSeconds?: number;
+  /** Tail of the "still pending" message telling the caller how to retry. */
+  retryHint?: string;
+  /** Re-fetch the PR after checks settle (mergeable_state may leave `blocked`). */
+  refetch?: () => Promise<PrLike>;
+}
+
+/**
+ * Optionally wait for the PR's checks, then run every gate. With `wait`, a red
+ * check refuses immediately (fail fast) and a check still running at the
+ * deadline returns a "pending — retry" note; green re-fetches the PR and runs
+ * the normal gates unchanged. Without `wait`, identical to verifyMergeable.
+ */
+export async function verifyMergeableWithWait(pr: PrLike, baseTier: string, opts: CheckWaitOptions = {}): Promise<string | null> {
+  if (!opts.wait) return verifyMergeable(pr, baseTier);
+  const outcome = await waitForChecks(clampWaitSeconds(opts.timeoutSeconds), {
+    fetch: async () => {
+      const [combined, checks] = await Promise.all([getCombinedStatus(pr.head.sha), getCheckRuns(pr.head.sha)]);
+      return { combined, checks };
+    },
+  });
+  if (outcome.state !== "green") {
+    return waitRefusal(prLabel(pr), outcome, opts.retryHint ?? "re-run with wait_for_checks to keep waiting.");
+  }
+  const fresh = opts.refetch ? await opts.refetch() : pr;
+  return verifyMergeable(fresh, baseTier);
+}
+
 /**
  * Every gate beyond "targets the right tier": state/mergeability, green checks,
  * no pending requested review, every thread resolved. Returns the actionable
@@ -78,7 +111,7 @@ export async function verifyMergeable(pr: PrLike, baseTier: string): Promise<str
   const [combined, checks] = await Promise.all([getCombinedStatus(pr.head.sha), getCheckRuns(pr.head.sha)]);
   const failing = outstandingChecks(combined, checks);
   if (failing.length > 0) {
-    return `[okffs] Refusing to merge ${label}: not all checks are green. Outstanding: ${failing.join(", ")}. Wait for them to pass (or fix them), then retry.`;
+    return `[okffs] Refusing to merge ${label}: not all checks are green. Outstanding: ${failing.join(", ")}. Wait for them to pass (or fix them), then retry — pass wait_for_checks: true to have okffs wait for pending checks.`;
   }
 
   // A requested review that hasn't been submitted yet (e.g. Copilot still

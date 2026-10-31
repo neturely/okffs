@@ -19,7 +19,7 @@ import {
   mergePullRequest,
   type PullRequestDetail,
 } from "../github.js";
-import { verifyMergeable, prLabel } from "../pr_gates.js";
+import { verifyMergeableWithWait, prLabel } from "../pr_gates.js";
 import { decideTags, renderTagReport, type AppVersionProbe } from "../tagging.js";
 import { probeAppVersions } from "../app_versions.js";
 import { extractChangelogSection, releaseTitle, isPrereleaseVersion, releaseNotes } from "../release_notes.js";
@@ -62,6 +62,16 @@ export const inputSchema = z.object({
     .string()
     .optional()
     .describe("Optional summary for the PR body. When omitted, the body lists the commits being promoted."),
+  wait_for_checks: z
+    .boolean()
+    .optional()
+    .describe("Only with OKFFS_AUTO_MERGE_PROTECTED=true on a re-run: wait (bounded) for the gate PR's pending checks before the merge attempt. A pending requested review is still reported, never waited on."),
+  wait_timeout_seconds: z
+    .number()
+    .int()
+    .nonnegative()
+    .optional()
+    .describe("How long wait_for_checks may block, in seconds (default 90, capped at 180)."),
 });
 
 const text = (t: string) => ({ content: [{ type: "text" as const, text: t }] });
@@ -240,7 +250,7 @@ export async function handler(input: z.infer<typeof inputSchema>) {
   // reported, not prompted; the PR stays open for the next re-run.
   let mergedNow = false;
   if (action === "updated" && config.autoMergeProtected && targetsProtected) {
-    const outcome = await mergeGatePullRequest(pr.number, base);
+    const outcome = await mergeGatePullRequest(pr.number, base, input);
     notes.push(outcome.note);
     mergedNow = outcome.merged;
     if (mergedNow && config.tagRelease && targetsProtected) {
@@ -378,10 +388,19 @@ async function getPullRequestWhenComputed(prNumber: number): Promise<PullRequest
 }
 
 // Merge the gate PR into the protected tier under the shared gates (#311).
-async function mergeGatePullRequest(prNumber: number, base: string): Promise<{ merged: boolean; note: string }> {
+async function mergeGatePullRequest(
+  prNumber: number,
+  base: string,
+  wait: { wait_for_checks?: boolean; wait_timeout_seconds?: number } = {}
+): Promise<{ merged: boolean; note: string }> {
   try {
     const pr = await getPullRequestWhenComputed(prNumber);
-    const refusal = await verifyMergeable(pr, base);
+    const refusal = await verifyMergeableWithWait(pr, base, {
+      wait: wait.wait_for_checks,
+      timeoutSeconds: wait.wait_timeout_seconds,
+      retryHint: "re-run promote_branch with wait_for_checks: true to keep waiting.",
+      refetch: () => getPullRequestWhenComputed(prNumber),
+    });
     if (refusal) return { merged: false, note: `${refusal} (OKFFS_AUTO_MERGE_PROTECTED is on — re-run promote_branch once addressed.)` };
     const method = config.protectedMergeMethod;
     const result = await mergePullRequest(pr.number, method);
