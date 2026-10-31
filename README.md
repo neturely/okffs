@@ -104,6 +104,7 @@ It removes confirmation friction; it does **not** grant new powers. The hard sto
 | Review feedback | Re-run `promote_branch` to see unresolved threads; fix via `/okffs:address_pr_review` + `fix_into_base`. | — |
 | Merge the gate PR | You merge it on GitHub. | `OKFFS_AUTO_MERGE_PROTECTED=true` — a re-run merges once every gate passes (checks green, review landed, threads resolved). |
 | Tag the release | You push the tag (`v0.13.0`, or `finance-1.3.0` per app). | `OKFFS_TAG_RELEASE=true` — the re-run after the merge tags the release(s) on the merge commit. |
+| Sync back | You merge `main → develop` with a merge commit. | `OKFFS_SYNC_BACK=true` — the same run opens and merges the `main → develop` PR as a merge commit (never squash) and checks it has 2 parents. |
 
 With both flags on, the loop is: `promote_branch` → review lands → address it → re-run `promote_branch` merges **and** tags. okffs still refuses, and tells you why, when a check fails, a requested review is pending, a thread is open, or the target branch moved past the merge commit. A tag usually triggers your CI publish, which cannot be undone — turn these on deliberately.
 
@@ -245,6 +246,7 @@ All optional; unset unless noted. Grouped by concern — the same groups appear 
 | `OKFFS_PROMOTION_AUTO_REVIEW` | `false` | Opt in to auto-request those reviewers, **on gate-PR creation only** (never on re-runs). **⚠️ Cost:** Copilot code review is billable, so this charges per newly-created promotion PR. |
 | `OKFFS_TAG_RELEASE` | `false` | After you merge the promotion PR, a `promote_branch` re-run tags the release(s) it carried on the merge commit (`vX.Y.Z`, or `{app}-X.Y.Z` per app). **⚠️ Irreversible:** a tag usually triggers CI publishing. |
 | `OKFFS_AUTO_MERGE_PROTECTED` | `false` | Let a `promote_branch` **re-run** merge the gate PR into `OKFFS_PROTECTED_BRANCH` once every gate passes (checks green, no pending requested review, threads resolved). With `OKFFS_TAG_RELEASE` it then tags — the fully handled promotion. The only way okffs merges the protected branch. |
+| `OKFFS_SYNC_BACK` | `false` | `promote_branch` syncs the protected branch back into the base branch (`main → develop`) once it has commits the base lacks — opens/reuses the PR and merges it with a **merge commit** (never squash; a squash causes phantom conflicts on the next promotion) under the usual gates, then checks it has 2 parents. |
 
 **Multisite** (several apps in one repo)
 
