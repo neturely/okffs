@@ -106,3 +106,64 @@ export function renderChecksReport(
   }
   return out.join("\n");
 }
+
+// ── log matching (#362) ────────────────────────────────────────────────────
+// Confirms a specific line made it into a run's log — e.g. a deploy job's
+// migration line `[health] applied` — without the caller grepping raw logs.
+
+export const MAX_LOG_MATCHES = 20;
+
+/** Compile a caller-supplied pattern, or return the error text. Pure. */
+export function compileLogMatch(pattern: string): RegExp | string {
+  try {
+    return new RegExp(pattern);
+  } catch (err) {
+    return `[okffs] log_match is not a valid regular expression: ${err instanceof Error ? err.message : String(err)}`;
+  }
+}
+
+/** Completed GitHub Actions runs whose log can be searched — skipped jobs never ran, so have none. Pure. */
+export function completedActionsRuns(checks: CheckRunsResult): CheckRun[] {
+  return checks.check_runs.filter(
+    (c) => c.status === "completed" && c.conclusion !== "skipped" && c.app?.slug === "github-actions" && typeof c.id === "number"
+  );
+}
+
+/** Log lines matching `re`, timestamps/ANSI stripped, at most `max`. Pure. */
+export function matchLogLines(raw: string, re: RegExp, max = MAX_LOG_MATCHES): string[] {
+  const out: string[] = [];
+  for (const line of raw.split(/\r?\n/)) {
+    const clean = line.replace(TIMESTAMP, "").replace(ANSI, "").trimEnd();
+    if (re.test(clean)) {
+      out.push(clean);
+      if (out.length >= max) break;
+    }
+  }
+  return out;
+}
+
+/**
+ * Render the log_match section. `matches` maps a searched run's id to its
+ * matching lines, or to an error string when its log couldn't be fetched;
+ * `notSearched` names runs still in progress. Pure.
+ */
+export function renderLogMatches(
+  pattern: string,
+  checks: CheckRunsResult,
+  matches: Map<number, string[] | string>,
+  notSearched: string[]
+): string {
+  const out = [`## log_match \`${pattern}\``];
+  const found = [...matches.values()].some((m) => Array.isArray(m) && m.length > 0);
+  for (const c of checks.check_runs) {
+    if (c.id === undefined || !matches.has(c.id)) continue;
+    const m = matches.get(c.id)!;
+    if (typeof m === "string") out.push(`⚠️ ${c.name} — log unavailable: ${m}`);
+    else if (m.length === 0) out.push(`➖ ${c.name} — no matching line`);
+    else out.push(`✅ ${c.name} — ${m.length} matching line(s):`, "```", ...m, "```");
+  }
+  if (matches.size === 0) out.push("No completed GitHub Actions run to search.");
+  if (notSearched.length > 0) out.push(`⏳ Not searched yet (still running): ${notSearched.join(", ")} — re-run with wait_for_checks: true.`);
+  out.push(found ? "Verdict: matched." : "Verdict: NOT matched.");
+  return out.join("\n");
+}

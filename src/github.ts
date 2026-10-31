@@ -507,6 +507,12 @@ export async function getCheckRuns(sha: string): Promise<CheckRunsResult> {
   return request(`/repos/${owner}/${repo}/commits/${sha}/check-runs?per_page=100`);
 }
 
+/** The commit sha a branch, tag or sha resolves to (commits API accepts all three; an annotated tag is peeled). */
+export async function resolveCommitSha(ref: string): Promise<string> {
+  const data = await request<{ sha: string }>(`/repos/${owner}/${repo}/commits/${encodeURIComponent(ref)}`);
+  return data.sha;
+}
+
 // Raw log text of a GitHub Actions job (#348). A check run created by Actions
 // shares its id with the job. The endpoint 302s to a short-lived signed URL,
 // which fetch follows (dropping the Authorization header cross-origin, as the

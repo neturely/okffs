@@ -54,3 +54,32 @@ test("renderChecksReport summarizes all-green and empty", () => {
   assert.match(renderChecksReport("PR #1", combined, { total_count: 0, check_runs: [] }, new Map()), /1 check\(s\): all green\./);
   assert.match(renderChecksReport("PR #1", { state: "success", statuses: [] }, { total_count: 0, check_runs: [] }, new Map()), /no checks reported/);
 });
+
+import { compileLogMatch, completedActionsRuns, matchLogLines, renderLogMatches } from "./pr_checks.js";
+
+test("compileLogMatch returns a RegExp, or an error string for a bad pattern", () => {
+  assert.ok(compileLogMatch("\\[health\\] applied") instanceof RegExp);
+  assert.match(String(compileLogMatch("([")), /not a valid regular expression/);
+});
+
+test("completedActionsRuns keeps completed Actions runs, minus skipped ones", () => {
+  assert.deepEqual(completedActionsRuns(checks).map((c) => c.name), ["test", "audit"]);
+  const skipped = { total_count: 1, check_runs: [{ id: 9, name: "verify", status: "completed", conclusion: "skipped", app: actions }] };
+  assert.deepEqual(completedActionsRuns(skipped), []);
+});
+
+test("matchLogLines strips timestamps/ANSI and caps the count", () => {
+  const raw = "2026-10-31T10:00:00.1234567Z \x1b[32m[health] applied 3 migrations\x1b[0m\n2026-10-31T10:00:01Z other\n[health] applied 0";
+  const re = compileLogMatch("\\[health\\] applied") as RegExp;
+  assert.deepEqual(matchLogLines(raw, re), ["[health] applied 3 migrations", "[health] applied 0"]);
+  assert.deepEqual(matchLogLines(raw, re, 1), ["[health] applied 3 migrations"]);
+});
+
+test("renderLogMatches reports per run and a verdict", () => {
+  const out = renderLogMatches("x", checks, new Map<number, string[] | string>([[1, ["x here"]], [2, []]]), ["review"]);
+  assert.match(out, /✅ test — 1 matching line/);
+  assert.match(out, /➖ audit — no matching line/);
+  assert.match(out, /Not searched yet \(still running\): review/);
+  assert.match(out, /Verdict: matched\./);
+  assert.match(renderLogMatches("x", checks, new Map(), []), /Verdict: NOT matched/);
+});
