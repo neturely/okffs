@@ -13,6 +13,7 @@ import {
   type CheckRunsResult,
   type PullRequestReview,
 } from "./github.js";
+import { waitForChecks, clampWaitSeconds, waitRefusal } from "./check_wait.js";
 
 export type PrLike = Pick<PullRequestDetail, "number" | "state" | "draft" | "merged" | "mergeable" | "mergeable_state" | "head" | "base"> & {
   requested_reviewers?: Array<{ login: string }>;
@@ -53,6 +54,12 @@ export function outstandingChecks(combined: CombinedStatus, checks: CheckRunsRes
   return [...badStatuses, ...badChecks];
 }
 
+/** Refusal when the PR's base changed between validation and merge (e.g. during a wait), else null. Pure. */
+export function retargetRefusal(before: PrLike, after: PrLike): string | null {
+  if (after.base.ref === before.base.ref) return null;
+  return `[okffs] Refusing to merge ${prLabel(after)}: it was retargeted from \`${before.base.ref}\` to \`${after.base.ref}\` while waiting for checks. Nothing merged — re-run so the target is validated again.`;
+}
+
 /** Reviewers (users and teams) whose requested review has not been submitted yet. Pure. */
 export function pendingReviewers(pr: PrLike): string[] {
   return [...(pr.requested_reviewers ?? []).map((r) => r.login), ...(pr.requested_teams ?? []).map((t) => `team:${t.slug}`)];
@@ -61,6 +68,42 @@ export function pendingReviewers(pr: PrLike): string[] {
 /** Unresolved review threads that actually contain comments. Pure. */
 export function unresolvedThreadCount(review: Pick<PullRequestReview, "threads">): number {
   return review.threads.filter((t) => !t.isResolved && t.comments.length > 0).length;
+}
+
+export interface CheckWaitOptions {
+  /** Wait (bounded) for pending checks before evaluating the gates (#347). */
+  wait?: boolean;
+  /** Requested wait in seconds; defaulted and capped by clampWaitSeconds. */
+  timeoutSeconds?: number;
+  /** Tail of the "still pending" message telling the caller how to retry. */
+  retryHint?: string;
+  /** Re-fetch the PR after checks settle (mergeable_state may leave `blocked`). */
+  refetch?: () => Promise<PrLike>;
+}
+
+/**
+ * Optionally wait for the PR's checks, then run every gate. With `wait`, a red
+ * check refuses immediately (fail fast) and a check still running at the
+ * deadline returns a "pending — retry" note; green re-fetches the PR and runs
+ * the normal gates unchanged. Without `wait`, identical to verifyMergeable.
+ */
+export async function verifyMergeableWithWait(pr: PrLike, baseTier: string, opts: CheckWaitOptions = {}): Promise<string | null> {
+  if (!opts.wait) return verifyMergeable(pr, baseTier);
+  const outcome = await waitForChecks(clampWaitSeconds(opts.timeoutSeconds), {
+    fetch: async () => {
+      const [combined, checks] = await Promise.all([getCombinedStatus(pr.head.sha), getCheckRuns(pr.head.sha)]);
+      return { combined, checks };
+    },
+  });
+  if (outcome.state !== "green") {
+    return waitRefusal(prLabel(pr), outcome, opts.retryHint ?? "re-run with wait_for_checks to keep waiting.");
+  }
+  const fresh = opts.refetch ? await opts.refetch() : pr;
+  // The caller validated the target tier BEFORE the wait; a PR retargeted
+  // during it (e.g. to the protected branch) must not ride that validation.
+  const retarget = retargetRefusal(pr, fresh);
+  if (retarget) return retarget;
+  return verifyMergeable(fresh, baseTier);
 }
 
 /**
@@ -78,7 +121,7 @@ export async function verifyMergeable(pr: PrLike, baseTier: string): Promise<str
   const [combined, checks] = await Promise.all([getCombinedStatus(pr.head.sha), getCheckRuns(pr.head.sha)]);
   const failing = outstandingChecks(combined, checks);
   if (failing.length > 0) {
-    return `[okffs] Refusing to merge ${label}: not all checks are green. Outstanding: ${failing.join(", ")}. Wait for them to pass (or fix them), then retry.`;
+    return `[okffs] Refusing to merge ${label}: not all checks are green. Outstanding: ${failing.join(", ")}. Wait for them to pass (or fix them), then retry — pass wait_for_checks: true to have okffs wait for pending checks, or run get_pr_checks to see why one failed.`;
   }
 
   // A requested review that hasn't been submitted yet (e.g. Copilot still
