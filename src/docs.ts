@@ -3,6 +3,7 @@ import path from "path";
 import { config } from "./config.js";
 import { owner, repo } from "./github.js";
 import { resolveApp } from "./apps.js";
+import { changeTypeFor } from "./change_type.js";
 
 // Scoped to: CHANGELOG.md (always) and SECURITY.md (security-related changes only).
 // Entries are title-based one-liners — concise and complete, so nothing needs
@@ -20,6 +21,10 @@ export interface DocsContext {
   branchName?: string;
   /** Directory (relative to cwd) the changelog fragment goes under; "." / unset = cwd (#330). */
   appRoot?: string;
+  /** The issue's native Issue Type (Bug/Feature/…) — decides the fragment heading before title keywords. */
+  issueType?: string | null;
+  /** The issue's labels (`bug`, `enhancement`, `security`) — same purpose. */
+  issueLabels?: Array<{ name: string } | string> | null;
 }
 
 interface FileUpdate {
@@ -33,12 +38,7 @@ function isoDate(): string {
 }
 
 function getChangeType(ctx: DocsContext): string {
-  const lower = (ctx.issueTitle ?? ctx.trigger).toLowerCase();
-  if (/fix|bug|error|crash|broken/.test(lower)) return "Fixed";
-  if (/add|new|create|implement|feature/.test(lower)) return "Added";
-  if (/remove|delete|deprecat/.test(lower)) return "Removed";
-  if (/security|vulnerability|cve/.test(lower)) return "Security";
-  return "Changed";
+  return changeTypeFor({ issueType: ctx.issueType, labels: ctx.issueLabels, title: ctx.issueTitle ?? ctx.trigger });
 }
 
 // Truncate at a word boundary (never mid-word) so summaries don't get cut into
