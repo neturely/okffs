@@ -1,0 +1,34 @@
+name: Test
+
+on:
+  pull_request:
+    branches: [develop, main]
+  push:
+    branches: [develop]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 'lts/*'
+          cache: npm
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npx tsc --noEmit -p .
+
+      - name: Unit tests
+        run: npm test
+        env:
+          # Some tests import modules that resolve a token/repo at import time
+          # (github.ts). They make no API calls; this read-only token just
+          # satisfies the resolution.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
