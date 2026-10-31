@@ -199,6 +199,8 @@ export async function handler(input: z.infer<typeof inputSchema>) {
       trigger: "create_pull_request",
       issueNumber: input.issue_number,
       issueTitle: issue.title,
+      issueType: issue.type?.name ?? null,
+      issueLabels: issue.labels ?? null,
       summary: input.summary ?? cleanedDescription,
       branchName,
       appRoot: fragmentRoot.root,
