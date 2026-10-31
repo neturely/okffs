@@ -475,7 +475,7 @@ export interface CombinedStatus {
   statuses: Array<{ state: string; context: string; target_url?: string | null; description?: string | null }>;
 }
 export async function getCombinedStatus(sha: string): Promise<CombinedStatus> {
-  return request(`/repos/${owner}/${repo}/commits/${sha}/status`);
+  return request(`/repos/${owner}/${repo}/commits/${sha}/status?per_page=100`);
 }
 
 // Check runs (the newer Checks API — e.g. GitHub Actions). Independent of the
