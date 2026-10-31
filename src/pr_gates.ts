@@ -111,7 +111,7 @@ export async function verifyMergeable(pr: PrLike, baseTier: string): Promise<str
   const [combined, checks] = await Promise.all([getCombinedStatus(pr.head.sha), getCheckRuns(pr.head.sha)]);
   const failing = outstandingChecks(combined, checks);
   if (failing.length > 0) {
-    return `[okffs] Refusing to merge ${label}: not all checks are green. Outstanding: ${failing.join(", ")}. Wait for them to pass (or fix them), then retry — pass wait_for_checks: true to have okffs wait for pending checks.`;
+    return `[okffs] Refusing to merge ${label}: not all checks are green. Outstanding: ${failing.join(", ")}. Wait for them to pass (or fix them), then retry — pass wait_for_checks: true to have okffs wait for pending checks, or run get_pr_checks to see why one failed.`;
   }
 
   // A requested review that hasn't been submitted yet (e.g. Copilot still
