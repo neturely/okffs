@@ -76,7 +76,7 @@ export function waitRefusal(label: string, outcome: Exclude<WaitOutcome, { state
   const secs = Math.round(outcome.waitedMs / 1000);
   if (outcome.state === "failed") {
     const still = outcome.pending.length > 0 ? ` (still running: ${outcome.pending.join(", ")})` : "";
-    return `[okffs] Refusing to merge ${label}: check(s) failed — ${outcome.failed.join(", ")}${still}. Fix them, then retry.`;
+    return `[okffs] Refusing to merge ${label}: check(s) failed — ${outcome.failed.join(", ")}${still}. Run get_pr_checks for the failing job's log tail, fix, then retry.`;
   }
   return `⏳ ${label}: checks still pending after waiting ${secs}s — ${outcome.pending.join(", ")}. Nothing merged; ${retryHint}`;
 }

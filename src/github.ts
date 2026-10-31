@@ -472,7 +472,7 @@ export async function getPullRequest(prNumber: number): Promise<PullRequestDetai
 // Legacy combined commit status (the older Statuses API — e.g. many CI providers).
 export interface CombinedStatus {
   state: "success" | "failure" | "pending" | "error";
-  statuses: Array<{ state: string; context: string }>;
+  statuses: Array<{ state: string; context: string; target_url?: string | null; description?: string | null }>;
 }
 export async function getCombinedStatus(sha: string): Promise<CombinedStatus> {
   return request(`/repos/${owner}/${repo}/commits/${sha}/status`);
@@ -483,10 +483,36 @@ export async function getCombinedStatus(sha: string): Promise<CombinedStatus> {
 // both to decide "are the checks green".
 export interface CheckRunsResult {
   total_count: number;
-  check_runs: Array<{ name: string; status: string; conclusion: string | null }>;
+  check_runs: Array<{
+    name: string;
+    status: string;
+    conclusion: string | null;
+    id?: number;
+    html_url?: string | null;
+    app?: { slug: string } | null;
+  }>;
 }
 export async function getCheckRuns(sha: string): Promise<CheckRunsResult> {
   return request(`/repos/${owner}/${repo}/commits/${sha}/check-runs?per_page=100`);
+}
+
+// Raw log text of a GitHub Actions job (#348). A check run created by Actions
+// shares its id with the job. The endpoint 302s to a short-lived signed URL,
+// which fetch follows (dropping the Authorization header cross-origin, as the
+// signed URL expects). Needs the token's Actions: read permission.
+export async function getActionsJobLog(jobId: number): Promise<string> {
+  const res = await timedFetch(`${BASE}/repos/${owner}/${repo}/actions/jobs/${jobId}/logs`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: "application/vnd.github+json",
+      "X-GitHub-Api-Version": "2022-11-28",
+    },
+  }, true);
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`GitHub API error ${res.status}: ${body.slice(0, 200)}`);
+  }
+  return res.text();
 }
 
 // Merge a PR with an explicit method (squash | merge | rebase). Throws on any
