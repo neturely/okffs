@@ -82,4 +82,10 @@ test("renderLogMatches reports per run and a verdict", () => {
   assert.match(out, /Not searched yet \(still running\): review/);
   assert.match(out, /Verdict: matched\./);
   assert.match(renderLogMatches("x", checks, new Map(), []), /Verdict: NOT matched/);
+  assert.match(renderLogMatches("x", checks, new Map<number, string[] | string>([[2, []]]), []), /Verdict: NOT matched/);
+});
+
+test("renderLogMatches: a pending run or unreadable log is UNKNOWN, never NOT matched", () => {
+  assert.match(renderLogMatches("x", checks, new Map<number, string[] | string>([[2, []]]), ["review"]), /Verdict: UNKNOWN — .*1 run\(s\) still running\./);
+  assert.match(renderLogMatches("x", checks, new Map<number, string[] | string>([[1, "403"], [2, []]]), []), /Verdict: UNKNOWN — .*1 run\(s\) unreadable\./);
 });

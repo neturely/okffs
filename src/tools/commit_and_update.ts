@@ -48,7 +48,7 @@ export async function handler(input: z.infer<typeof inputSchema>) {
     return {
       content: [{
         type: "text" as const,
-        text: `[okffs] commit_and_update: unknown parameter(s) ${unknownParams.map((k) => `\`${k}\``).join(", ")} — nothing was committed. Valid parameters: issue_number, message (the commit message), include_untracked, allow_secret_paths, autopilot_decisions.${hintNote}`,
+        text: `[okffs] commit_and_update: unknown parameter(s) ${unknownParams.map((k) => `\`${k}\``).join(", ")} — nothing was committed. Valid parameters: ${[...KNOWN_PARAMS].map((k) => (k === "message" ? "message (the commit message)" : k)).join(", ")}.${hintNote}`,
       }],
     };
   }
