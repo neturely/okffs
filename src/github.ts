@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { config } from "./config.js";
-import { isPrCreateRaceError } from "./github_errors.js";
+import { isPrCreateRaceError, describeFetchError, isNetworkRequestError } from "./github_errors.js";
 import { parseOwnerRepo } from "./remote.js";
 
 const BASE = "https://api.github.com";
@@ -114,8 +114,7 @@ async function timedFetch(url: string, options: RequestInit, retryable: boolean)
       return await fetch(url, { ...options, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
     } catch (err) {
       if (retryable && attempt === 0) continue;
-      const msg = err instanceof Error ? err.message : String(err);
-      throw new Error(`GitHub request to ${url} failed: ${msg}`);
+      throw new Error(`GitHub request to ${url} failed: ${describeFetchError(err)}`);
     }
   }
 }
@@ -291,7 +290,7 @@ export async function closeIssue(issueNumber: number): Promise<void> {
   });
 }
 
-export async function getIssue(issueNumber: number): Promise<{ number: number; title: string; html_url: string; body: string | null; node_id: string; type?: { name: string } | null }> {
+export async function getIssue(issueNumber: number): Promise<{ number: number; title: string; html_url: string; body: string | null; node_id: string; type?: { name: string } | null; labels?: Array<{ name: string } | string> }> {
   return request(`/repos/${owner}/${repo}/issues/${issueNumber}`);
 }
 
@@ -349,6 +348,17 @@ export async function getBranchCommits(branchName: string, baseBranch: string): 
   );
 }
 
+/** Commits on `branchName` not on `baseBranch`, plus how many files differ (compare API; files cap at 300). */
+export async function compareBranches(
+  branchName: string,
+  baseBranch: string
+): Promise<{ commits: Array<{ sha: string; commit: { message: string } }>; filesChanged: number }> {
+  const data = await request<{ commits?: Array<{ sha: string; commit: { message: string } }>; files?: unknown[] }>(
+    `/repos/${owner}/${repo}/compare/${baseBranch}...${branchName}`
+  );
+  return { commits: data.commits ?? [], filesChanged: data.files?.length ?? 0 };
+}
+
 export async function getIssueComments(issueNumber: number): Promise<Array<{ body: string }>> {
   // Fetch newest-first so callers can reliably take the most recent N comments.
   return request(`/repos/${owner}/${repo}/issues/${issueNumber}/comments?per_page=100&sort=created&direction=desc`);
@@ -367,12 +377,36 @@ export async function getIssueComments(issueNumber: number): Promise<Array<{ bod
 // here so existing importers keep working.
 export { summarizeGitHubError } from "./github_errors.js";
 
-async function withPrCreateRetry<T>(fn: () => Promise<T>, attempts = 4, delayMs = 1500): Promise<T> {
+// A network-level failure (no HTTP response, e.g. a dropped keep-alive socket)
+// gets one retry too (#345). The POST may still have landed, so first look for
+// an open PR on head→base and return it if found; only otherwise re-POST.
+async function withPrCreateRetry<T>(
+  fn: () => Promise<T>,
+  head: string,
+  base: string,
+  attempts = 4,
+  delayMs = 1500
+): Promise<T> {
+  let networkRetried = false;
   for (let attempt = 1; ; attempt++) {
     try {
       return await fn();
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+      if (isNetworkRequestError(msg) && !networkRetried) {
+        networkRetried = true;
+        console.warn(`[okffs] PR creation failed at the network level (${msg}) — checking for the PR, then retrying once.`);
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+        let existing: Awaited<ReturnType<typeof getOpenPullRequestForBranch>>;
+        try {
+          existing = await getOpenPullRequestForBranch(head, base);
+        } catch {
+          throw err; // can't tell whether the POST landed — don't risk a duplicate attempt
+        }
+        if (existing) return existing as unknown as T;
+        attempt--; // the network retry doesn't consume a race-retry attempt
+        continue;
+      }
       if (!isPrCreateRaceError(msg) || attempt >= attempts) throw err;
       console.warn(
         `[okffs] PR creation hit the push→POST indexing race (422) — retry ${attempt}/${attempts - 1} in ${delayMs}ms.`
@@ -392,7 +426,9 @@ export async function createPullRequest(
     request(`/repos/${owner}/${repo}/pulls`, {
       method: "POST",
       body: JSON.stringify({ title, head, base, body }),
-    })
+    }),
+    head,
+    base
   );
 }
 
@@ -447,10 +483,10 @@ export async function getPullRequest(prNumber: number): Promise<PullRequestDetai
 // Legacy combined commit status (the older Statuses API — e.g. many CI providers).
 export interface CombinedStatus {
   state: "success" | "failure" | "pending" | "error";
-  statuses: Array<{ state: string; context: string }>;
+  statuses: Array<{ state: string; context: string; target_url?: string | null; description?: string | null }>;
 }
 export async function getCombinedStatus(sha: string): Promise<CombinedStatus> {
-  return request(`/repos/${owner}/${repo}/commits/${sha}/status`);
+  return request(`/repos/${owner}/${repo}/commits/${sha}/status?per_page=100`);
 }
 
 // Check runs (the newer Checks API — e.g. GitHub Actions). Independent of the
@@ -458,10 +494,42 @@ export async function getCombinedStatus(sha: string): Promise<CombinedStatus> {
 // both to decide "are the checks green".
 export interface CheckRunsResult {
   total_count: number;
-  check_runs: Array<{ name: string; status: string; conclusion: string | null }>;
+  check_runs: Array<{
+    name: string;
+    status: string;
+    conclusion: string | null;
+    id?: number;
+    html_url?: string | null;
+    app?: { slug: string } | null;
+  }>;
 }
 export async function getCheckRuns(sha: string): Promise<CheckRunsResult> {
   return request(`/repos/${owner}/${repo}/commits/${sha}/check-runs?per_page=100`);
+}
+
+/** The commit sha a branch, tag or sha resolves to (commits API accepts all three; an annotated tag is peeled). */
+export async function resolveCommitSha(ref: string): Promise<string> {
+  const data = await request<{ sha: string }>(`/repos/${owner}/${repo}/commits/${encodeURIComponent(ref)}`);
+  return data.sha;
+}
+
+// Raw log text of a GitHub Actions job (#348). A check run created by Actions
+// shares its id with the job. The endpoint 302s to a short-lived signed URL,
+// which fetch follows (dropping the Authorization header cross-origin, as the
+// signed URL expects). Needs the token's Actions: read permission.
+export async function getActionsJobLog(jobId: number): Promise<string> {
+  const res = await timedFetch(`${BASE}/repos/${owner}/${repo}/actions/jobs/${jobId}/logs`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: "application/vnd.github+json",
+      "X-GitHub-Api-Version": "2022-11-28",
+    },
+  }, true);
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`GitHub API error ${res.status}: ${body.slice(0, 200)}`);
+  }
+  return res.text();
 }
 
 // Merge a PR with an explicit method (squash | merge | rebase). Throws on any
@@ -512,7 +580,9 @@ export async function createDraftPullRequest(
     request(`/repos/${owner}/${repo}/pulls`, {
       method: "POST",
       body: JSON.stringify({ title, head, base, body, draft: true }),
-    })
+    }),
+    head,
+    base
   );
 }
 
@@ -656,6 +726,12 @@ export async function getCommitParentSha(sha: string): Promise<string | null> {
   return data.parents?.[0]?.sha ?? null;
 }
 
+/** Every parent sha of a commit — 2+ for a true merge commit. */
+export async function getCommitParents(sha: string): Promise<string[]> {
+  const data = await request<{ parents?: Array<{ sha: string }> }>(`/repos/${owner}/${repo}/commits/${sha}`);
+  return (data.parents ?? []).map((p) => p.sha);
+}
+
 /**
  * The COMMIT sha a tag points at, or null when the tag doesn't exist. An
  * annotated tag's ref points at a tag object, which is dereferenced to its
@@ -695,4 +771,24 @@ export async function getFileContentAtRef(filePath: string, ref: string): Promis
     if (err instanceof Error && /GitHub API error 404/.test(err.message)) return null;
     throw err;
   }
+}
+
+// --- GitHub Releases (#337) --------------------------------------------------
+
+/** The release for a tag, or null when none exists. */
+export async function getReleaseByTag(tag: string): Promise<{ html_url: string } | null> {
+  try {
+    return await request<{ html_url: string }>(`/repos/${owner}/${repo}/releases/tags/${encodeURIComponent(tag)}`);
+  } catch (err) {
+    if (err instanceof Error && /GitHub API error 404/.test(err.message)) return null;
+    throw err;
+  }
+}
+
+/** Create a GitHub Release for an existing tag. */
+export async function createRelease(input: { tag: string; name: string; body: string; prerelease: boolean }): Promise<{ html_url: string }> {
+  return request(`/repos/${owner}/${repo}/releases`, {
+    method: "POST",
+    body: JSON.stringify({ tag_name: input.tag, name: input.name, body: input.body, prerelease: input.prerelease, make_latest: input.prerelease ? "false" : "true" }),
+  });
 }

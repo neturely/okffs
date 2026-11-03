@@ -14,7 +14,8 @@ import {
   type PullRequestDetail,
 } from "../github.js";
 import { config } from "../config.js";
-import { verifyMergeable } from "../pr_gates.js";
+import { verifyMergeableWithWait } from "../pr_gates.js";
+import { DEFAULT_WAIT_SECONDS, MAX_WAIT_SECONDS } from "../check_wait.js";
 
 export const name = "merge_pull_request";
 
@@ -24,7 +25,8 @@ export const description =
   "This is the ONE okffs action that merges — every other tool only opens PRs and hands back. It is therefore heavily gated and OPT-IN: it does nothing unless OKFFS_AUTO_MERGE_BASE=true. " +
   "It NEVER merges OKFFS_PROTECTED_BRANCH (e.g. main) — that stays a manual, user-driven merge/tag — and refuses entirely if OKFFS_PROTECTED_BRANCH is unset, so it can't merge into an unnamed protected branch. " +
   "Before merging it independently verifies (not merely trusting branch-protection rules): the PR targets the base tier and not the protected branch; it is open, not a draft, and free of conflicts; all commit statuses AND check runs on the head are green (no failing or pending checks); the PR is not blocked by a required gate; and every review thread is resolved. Any unmet gate → it refuses with an actionable reason and does not merge. " +
-  "On success (issue mode) it merges, comments on the issue, and — when the base isn't the repo default (so GitHub's Closes #N won't auto-close) — closes the issue to complete the loop. Use for landing small review-fix / feature PRs into develop without a human merge; the develop→main promotion always stays with the user.";
+  "On success (issue mode) it merges, comments on the issue, and — when the base isn't the repo default (so GitHub's Closes #N won't auto-close) — closes the issue to complete the loop. Use for landing small review-fix / feature PRs into develop without a human merge; the develop→main promotion always stays with the user. " +
+  `Pass wait_for_checks: true right after opening a PR to have okffs wait (bounded: default ${DEFAULT_WAIT_SECONDS}s, max ${MAX_WAIT_SECONDS}s) for pending checks instead of refusing — a red check refuses immediately, and checks still running at the deadline return a 'pending — retry' note (nothing merged); re-call to keep waiting.`;
 
 export const inputSchema = z.object({
   issue_number: z
@@ -43,6 +45,18 @@ export const inputSchema = z.object({
     .describe(
       "Merge-only mode: merge an ISSUE-LESS fix PR into the base branch directly by PR number — no issue comment/close and no **Branch:** line required, but all the same green gates apply. Provide this OR issue_number, not both."
     ),
+  wait_for_checks: z
+    .boolean()
+    .optional()
+    .describe(
+      `Wait for pending checks to finish before evaluating the gates, instead of refusing on 'in_progress'. Bounded (see wait_timeout_seconds); a failing check stops the wait and refuses at once; still pending at the deadline → nothing merged, re-call to keep waiting. Gates are never relaxed.`
+    ),
+  wait_timeout_seconds: z
+    .number()
+    .int()
+    .nonnegative()
+    .optional()
+    .describe(`How long wait_for_checks may block, in seconds (default ${DEFAULT_WAIT_SECONDS}, capped at ${MAX_WAIT_SECONDS}). For long checks, re-call rather than raising this.`),
 });
 
 const text = (t: string) => ({ content: [{ type: "text" as const, text: t }] });
@@ -135,7 +149,12 @@ export async function handler(input: z.infer<typeof inputSchema>) {
   // ── Gates 4–5: state, green checks, no pending review, threads resolved ──
   // Shared with the opt-in protected-tier merge in promote_branch (#311) so both
   // tiers refuse for identical reasons (src/pr_gates.ts).
-  const refusal = await verifyMergeable(pr, baseTier);
+  const refusal = await verifyMergeableWithWait(pr, baseTier, {
+    wait: input.wait_for_checks,
+    timeoutSeconds: input.wait_timeout_seconds,
+    retryHint: "re-call merge_pull_request with wait_for_checks: true to keep waiting.",
+    refetch: () => getPullRequestWhenComputed(pr.number),
+  });
   if (refusal) return text(refusal);
 
   // ── All gates passed — merge with the base-tier method ────────────────────

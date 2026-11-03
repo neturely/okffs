@@ -42,6 +42,7 @@ import * as setIssueFields from "./tools/set_issue_fields.js";
 import * as updateIssue from "./tools/update_issue.js";
 import * as promoteBranch from "./tools/promote_branch.js";
 import * as mergePullRequest from "./tools/merge_pull_request.js";
+import * as getPrChecks from "./tools/get_pr_checks.js";
 import * as fixIntoBase from "./tools/fix_into_base.js";
 import * as configure from "./tools/configure.js";
 
@@ -53,7 +54,7 @@ import { parseEnv } from "./cli/env.js";
 import { allKeys } from "./cli/manifest.js";
 import { canonicalizeRepo } from "./github.js";
 
-const tools = [createIssue, listIssues, closeIssue, deleteIssue, deleteBranch, getIssue, commentIssue, createIssuesFromList, plan, linkIssues, createPullRequest, commitAndUpdate, listPrReviewComments, replyToReviewComment, resolveReviewThread, prepareRelease, updateProjectStatus, setIssueFields, updateIssue, promoteBranch, mergePullRequest, fixIntoBase, configure];
+const tools = [createIssue, listIssues, closeIssue, deleteIssue, deleteBranch, getIssue, commentIssue, createIssuesFromList, plan, linkIssues, createPullRequest, commitAndUpdate, listPrReviewComments, replyToReviewComment, resolveReviewThread, prepareRelease, updateProjectStatus, setIssueFields, updateIssue, promoteBranch, mergePullRequest, fixIntoBase, getPrChecks, configure];
 
 const prompts = [addressPrReview, updateGuidance, setupPrompt];
 
@@ -80,12 +81,12 @@ Common action → tool:
 - Start work: create_issue (creates the issue, the linked branch, and the **Branch:** line that create_pull_request/commit_and_update rely on). Many at once: create_issues_from_list or plan.
 - Progress: commit_and_update (stage + commit + push + issue comment) — prefer over raw git commit/push.
 - Open/finalize an issue's PR (into the base branch): create_pull_request (always adds Closes #N).
-- Promotion/release gate — a base→protected PR with no issue, e.g. develop→main: promote_branch (issue-less; adds the PR to the board; NEVER use raw \`gh pr create\` for this). When it auto-requests a review (e.g. Copilot), CHECK BACK for the feedback before handing the merge to the user: re-run promote_branch (a re-run reports the gate PR's unresolved review threads without re-requesting the billable review; list_issues surfaces them too) and address them via the address_pr_review loop — fixes land through fix_into_base, threads resolve only after the fix PR merges. With OKFFS_AUTO_MERGE_PROTECTED=true and OKFFS_TAG_RELEASE=true the same re-run then merges the gate PR (every gate green, review landed and resolved) and tags the release — the fully handled promotion: open → review lands → address → re-run merges + tags.
+- Promotion/release gate — a base→protected PR with no issue, e.g. develop→main: promote_branch (issue-less; adds the PR to the board; NEVER use raw \`gh pr create\` for this). When it auto-requests a review (e.g. Copilot), CHECK BACK for the feedback before handing the merge to the user: re-run promote_branch (a re-run reports the gate PR's unresolved review threads without re-requesting the billable review; list_issues surfaces them too) and address them via the address_pr_review loop — fixes land through fix_into_base, threads resolve only after the fix PR merges. With OKFFS_AUTO_MERGE_PROTECTED=true and OKFFS_TAG_RELEASE=true the same re-run then merges the gate PR (every gate green, review landed and resolved) and tags the release — the fully handled promotion: open → review lands → address → re-run merges + tags. With OKFFS_SYNC_BACK=true it then syncs main back into develop with a true merge commit (never squash) — never hand-roll that with raw gh.
 - Edit an existing issue's core fields (title, assignees, labels, milestone, body): update_issue — prefer over raw \`gh issue edit\`. (Board Priority/Effort is set_issue_fields; Status column is update_project_status — those aren't issue fields.)
 - Board: create_issue sets an inferred priority/effort at creation; set them on an EXISTING issue with set_issue_fields; move columns with update_project_status (Backlog/Ready/In Progress/Review — Done is GitHub's own automation).
 - PR review: list_pr_review_comments → fix → reply_to_review_comment → resolve_review_thread (honours OKFFS_RESOLVE_THREADS); or the /okffs:address_pr_review prompt.
 - Release prep: prepare_release (bumps version + rolls the changelog; does NOT tag or publish).
-- Land an issue PR into the BASE branch (e.g. develop): merge_pull_request — the one okffs action that merges. Opt-in (OKFFS_AUTO_MERGE_BASE=true) and heavily gated; it verifies checks/threads itself and NEVER touches OKFFS_PROTECTED_BRANCH. Off by default → it just declines.
+- Land an issue PR into the BASE branch (e.g. develop): merge_pull_request — the one okffs action that merges. Opt-in (OKFFS_AUTO_MERGE_BASE=true) and heavily gated; it verifies checks/threads itself and NEVER touches OKFFS_PROTECTED_BRANCH. Off by default → it just declines. Right after opening a PR, pass wait_for_checks: true so it waits (bounded) for pending checks instead of refusing — never poll raw \`gh pr checks\`. To diagnose a red check (states + failing Actions job log tail): get_pr_checks — never raw \`gh run view --log-failed\`. To watch the deploy run a tag/push triggered: get_pr_checks with ref (tag/branch/sha), wait_for_checks, and log_match (e.g. a migration line) — never raw \`gh run list\` / \`gh run watch\`.
 - Land an ISSUE-LESS fix into the BASE branch (no issue, e.g. review-comment cleanups): fix_into_base — the mirror of promote_branch. Opens (always safe) then merges under the same OKFFS_AUTO_MERGE_BASE gating as merge_pull_request. Prefer over raw \`gh pr create\`/\`gh pr merge\`; never targets OKFFS_PROTECTED_BRANCH.
 
 Setup/config: if the user needs to configure okffs — a missing token/repo, or turning on a feature like Projects — offer the /okffs:setup prompt, which configures okffs conversationally right here in Claude Code (it interviews the user and persists via the configure tool, no terminal needed). The equivalent terminal wizard is \`npx @neturely/okffs setup\` — a guided CLI that writes/updates .env preserving the user's own vars and comments, but being interactive it must be run in their own terminal, not via a tool or the \`!\` shell.

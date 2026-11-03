@@ -325,6 +325,13 @@ export const SECTIONS: Section[] = [
           "Let a promote_branch RE-RUN merge the gate PR into the protected branch once every gate passes (checks green, review landed, threads resolved). With OKFFS_TAG_RELEASE it then tags — the fully handled promotion. The ONLY way okffs merges the protected branch.",
         default: "false",
       },
+      {
+        key: "OKFFS_SYNC_BACK",
+        kind: "boolean",
+        description:
+          "After a promotion lands, promote_branch syncs the protected branch back into the base branch (main → develop) with a MERGE COMMIT (never squash), under the usual merge gates, and checks it has 2 parents. Prevents phantom conflicts on the next promotion.",
+        default: "false",
+      },
     ],
   },
   {

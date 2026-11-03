@@ -66,7 +66,8 @@ Claude infers labels (`bug`, `enhancement`, …) from the title and description 
 | `close_issue` | Closes an issue and tips you to `/clear` before the next one. |
 | `create_pull_request` | Opens a PR for an issue branch — generates the title/body, pushes the branch, always includes `Closes #N`, and comments back. Can write changelog fragments when `OKFFS_UPDATE_DOCS=true`. Pass `allow_empty: true` to backfill a **draft** tracking PR on a branch with no commits (pushes an empty init commit to diverge it). |
 | `commit_and_update` | Stages tracked changes (untracked need `include_untracked: true`), commits (your `message` verbatim, or an auto-generated one), pushes, and posts a progress comment to the issue. Refuses secret-looking files. |
-| `merge_pull_request` | Autonomously merges a green, review-resolved issue PR into the **base** branch (e.g. `develop`) using `OKFFS_BASE_MERGE_METHOD`, then closes the issue. Opt-in (`OKFFS_AUTO_MERGE_BASE=true`) and heavily gated — never touches `OKFFS_PROTECTED_BRANCH`, independently verifies checks/mergeability/threads. |
+| `merge_pull_request` | Autonomously merges a green, review-resolved issue PR into the **base** branch (e.g. `develop`) using `OKFFS_BASE_MERGE_METHOD`, then closes the issue. Opt-in (`OKFFS_AUTO_MERGE_BASE=true`) and heavily gated — never touches `OKFFS_PROTECTED_BRANCH`, independently verifies checks/mergeability/threads. `wait_for_checks: true` waits (bounded, default 90s) for pending checks instead of refusing. |
+| `get_pr_checks` | Read-only: lists a PR's statuses and check runs with their states, plus the last ~50 log lines of each failed GitHub Actions job (needs Actions: read). Pass `ref` (a tag, branch or sha) to watch the deploy run a push or tag triggered, `wait_for_checks` to wait (bounded) for it, and `log_match` (a regex, e.g. `\[health\] applied`) to confirm a line appeared in the run's log. |
 | `fix_into_base` | Opens (and, under the same `OKFFS_AUTO_MERGE_BASE` gates, merges) an **issue-less** fix PR into the base branch — for small cleanups such as review-comment fixes. Never targets `OKFFS_PROTECTED_BRANCH`. |
 | `promote_branch` | Opens the issue-less **promotion PR** (e.g. `develop → main`), boards it, optionally requests reviewers, and lists the **releases it carries** per app. A re-run reports unresolved review threads and — when you opt in — **merges** the gate PR (`OKFFS_AUTO_MERGE_PROTECTED`) and **tags** the merged release(s) (`OKFFS_TAG_RELEASE`). See [Releases and the promotion gate](#releases-and-the-promotion-gate). |
 | `list_pr_review_comments` | Fetches a PR's inline review threads and summaries. |
@@ -103,6 +104,7 @@ It removes confirmation friction; it does **not** grant new powers. The hard sto
 | Review feedback | Re-run `promote_branch` to see unresolved threads; fix via `/okffs:address_pr_review` + `fix_into_base`. | — |
 | Merge the gate PR | You merge it on GitHub. | `OKFFS_AUTO_MERGE_PROTECTED=true` — a re-run merges once every gate passes (checks green, review landed, threads resolved). |
 | Tag the release | You push the tag (`v0.13.0`, or `finance-1.3.0` per app). | `OKFFS_TAG_RELEASE=true` — the re-run after the merge tags the release(s) on the merge commit. |
+| Sync back | You merge `main → develop` with a merge commit. | `OKFFS_SYNC_BACK=true` — the same run opens and merges the `main → develop` PR as a merge commit (never squash) and checks it has 2 parents. |
 
 With both flags on, the loop is: `promote_branch` → review lands → address it → re-run `promote_branch` merges **and** tags. okffs still refuses, and tells you why, when a check fails, a requested review is pending, a thread is open, or the target branch moved past the merge commit. A tag usually triggers your CI publish, which cannot be undone — turn these on deliberately.
 
@@ -244,6 +246,7 @@ All optional; unset unless noted. Grouped by concern — the same groups appear 
 | `OKFFS_PROMOTION_AUTO_REVIEW` | `false` | Opt in to auto-request those reviewers, **on gate-PR creation only** (never on re-runs). **⚠️ Cost:** Copilot code review is billable, so this charges per newly-created promotion PR. |
 | `OKFFS_TAG_RELEASE` | `false` | After you merge the promotion PR, a `promote_branch` re-run tags the release(s) it carried on the merge commit (`vX.Y.Z`, or `{app}-X.Y.Z` per app). **⚠️ Irreversible:** a tag usually triggers CI publishing. |
 | `OKFFS_AUTO_MERGE_PROTECTED` | `false` | Let a `promote_branch` **re-run** merge the gate PR into `OKFFS_PROTECTED_BRANCH` once every gate passes (checks green, no pending requested review, threads resolved). With `OKFFS_TAG_RELEASE` it then tags — the fully handled promotion. The only way okffs merges the protected branch. |
+| `OKFFS_SYNC_BACK` | `false` | `promote_branch` syncs the protected branch back into the base branch (`main → develop`) once it has commits the base lacks — opens/reuses the PR and merges it with a **merge commit** (never squash; a squash causes phantom conflicts on the next promotion) under the usual gates, then checks it has 2 parents. |
 
 **Multisite** (several apps in one repo)
 
