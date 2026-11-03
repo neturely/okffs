@@ -1,2 +1,2 @@
 <!-- okffs:type=Fixed -->
-- Changelog fragment type should use the issue's Type and labels, not just title keywords ([#359](https://github.com/neturely/okffs/issues/359))
+- Changelog fragment type now comes from the issue's native Type and labels (security → Security, Bug → Fixed, Feature/enhancement → Added) before title keywords ([#359](https://github.com/neturely/okffs/issues/359))
