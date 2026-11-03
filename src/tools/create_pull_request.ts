@@ -13,12 +13,12 @@ import {
   markPullRequestReady,
   getRepoDefaultBranch,
   addIssueComment,
-  updateIssueBody,
 } from "../github.js";
 import { config } from "../config.js";
 import { updateProjectDocs } from "../docs.js";
 import { fragmentRootForIssue } from "../multisite.js";
 import { git, currentBranch, pushEmptyInitCommit } from "../git.js";
+import { resolveIssueBranch } from "../issue_branch.js";
 import { renderAutopilotDecisions, AUTOPILOT_DECISIONS_DESCRIPTION } from "../autopilot.js";
 
 export const name = "create_pull_request";
@@ -51,22 +51,9 @@ export async function handler(input: z.infer<typeof inputSchema>) {
   }
 
   if (!branchName) {
-    const current = currentBranch();
-    const inferred = current && current.startsWith(`${input.issue_number}-`) ? current : null;
-    const fallback = input.branch ?? inferred;
-    if (fallback) {
-      branchName = fallback;
-      // trimEnd only — trimming both ends could strip leading whitespace the user
-      // intentionally put in the issue body.
-      const base = (issue.body ?? "").trimEnd();
-      const newBody = base ? `${base}\n\n**Branch:** \`${branchName}\`` : `**Branch:** \`${branchName}\``;
-      try {
-        await updateIssueBody(input.issue_number, newBody);
-      } catch (err) {
-        // Non-fatal: proceed with the resolved branch even if the backfill fails.
-        console.warn(`[okffs] Could not backfill the **Branch:** line on #${input.issue_number}:`, err instanceof Error ? err.message : err);
-      }
-    }
+    // Shared with commit_and_update (#304): explicit branch, else an
+    // {issue}-… checkout; backfills the **Branch:** line (non-fatal).
+    branchName = (await resolveIssueBranch(input.issue_number, issue.body, input.branch)).branch;
   }
 
   if (!branchName) {
@@ -199,6 +186,8 @@ export async function handler(input: z.infer<typeof inputSchema>) {
       trigger: "create_pull_request",
       issueNumber: input.issue_number,
       issueTitle: issue.title,
+      issueType: issue.type?.name ?? null,
+      issueLabels: issue.labels ?? null,
       summary: input.summary ?? cleanedDescription,
       branchName,
       appRoot: fragmentRoot.root,

@@ -107,3 +107,19 @@ test("parseRelationships never throws on malformed or absent input", () => {
     blocking: [],
   });
 });
+
+import { inferIssueBranch, appendBranchLine } from "./issue_body.js";
+
+test("inferIssueBranch: explicit wins, else only an {issue}-… checkout", () => {
+  assert.equal(inferIssueBranch(42, "main", "feature-x"), "feature-x");
+  assert.equal(inferIssueBranch(42, "42-add-hero"), "42-add-hero");
+  assert.equal(inferIssueBranch(42, "421-other"), null);
+  assert.equal(inferIssueBranch(42, "develop"), null);
+  assert.equal(inferIssueBranch(42, null), null);
+});
+
+test("appendBranchLine appends after the body, or stands alone", () => {
+  assert.equal(appendBranchLine("Body text\n\n", "42-x"), "Body text\n\n**Branch:** `42-x`");
+  assert.equal(appendBranchLine(null, "42-x"), "**Branch:** `42-x`");
+  assert.equal(extractBranchFromBody(appendBranchLine("Body", "42-x")), "42-x");
+});

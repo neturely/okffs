@@ -1,7 +1,8 @@
 import { z } from "zod";
 import {
   getRepoDefaultBranch,
-  getBranchCommits,
+  compareBranches,
+  getCommitParents,
   createPullRequest,
   getOpenPullRequestForBranch,
   updatePullRequest,
@@ -27,6 +28,14 @@ import { summarizeReleases, renderReleaseSection, renderReleaseNote } from "../r
 import { config } from "../config.js";
 import { addIssueToProject, getProjectMetadata, setProjectFieldValue } from "../projects.js";
 import { summarizeReviewThreads, renderReviewGateWarning } from "../review_gate.js";
+import {
+  SYNC_BACK_MERGE_METHOD,
+  planSyncBack,
+  syncBackTitle,
+  syncBackBody,
+  renderSyncBackMerged,
+  isEmptyPromotion,
+} from "../sync_back.js";
 
 export const name = "promote_branch";
 
@@ -47,7 +56,10 @@ export const description =
   "has been merged tags the release(s) it carried (v1.2.0, or finance-1.2.0 per app whose version changed) on the merge commit. " +
   "With OKFFS_AUTO_MERGE_PROTECTED=true, a re-run on an EXISTING gate PR merges it into the protected branch (OKFFS_PROTECTED_MERGE_METHOD) " +
   "once every gate passes — open, non-draft, no conflicts, all checks green, no pending requested review, every thread resolved — and, " +
-  "with OKFFS_TAG_RELEASE too, tags in the same call: the fully handled promotion. Never on the call that creates the PR.";
+  "with OKFFS_TAG_RELEASE too, tags in the same call: the fully handled promotion. Never on the call that creates the PR. " +
+  "With OKFFS_SYNC_BACK=true, any run whose protected branch has commits the head lacks (right after that merge, or after a manual one) " +
+  "opens/reuses a protected → head sync-back PR (e.g. main → develop), waits (bounded) for its checks and merges it with a MERGE COMMIT — never squash — " +
+  "under the same gates, then verifies the commit has 2 parents. An unmet gate leaves it open for the next re-run.";
 
 export const inputSchema = z.object({
   head: z
@@ -71,7 +83,7 @@ export const inputSchema = z.object({
     .int()
     .nonnegative()
     .optional()
-    .describe("How long wait_for_checks may block, in seconds (default 90, capped at 180)."),
+    .describe("How long wait_for_checks — and the OKFFS_SYNC_BACK sync-back PR's check wait, which is always on — may block, in seconds (default 90, capped at 180)."),
 });
 
 const text = (t: string) => ({ content: [{ type: "text" as const, text: t }] });
@@ -113,9 +125,16 @@ export async function handler(input: z.infer<typeof inputSchema>) {
   // non-protected base (or no protected branch at all) never tags or merges.
   const tagNote = config.tagRelease && targetsProtected ? await tagMergedPromotion(head, base) : null;
 
-  const commits = await getBranchCommits(head, base);
-  if (commits.length === 0) {
-    return text(`Nothing to promote — \`${head}\` has no commits ahead of \`${base}\`.` + (tagNote ? `\n\n${tagNote}` : ""));
+  const { commits, filesChanged } = await compareBranches(head, base);
+  if (isEmptyPromotion(commits.length, filesChanged)) {
+    // Sync-back (#361) runs AFTER this comparison: a sync leaves `head` one
+    // merge commit ahead with an identical tree, which must not read as work
+    // to promote — hence the file-count check too.
+    const syncNote = config.syncBack && targetsProtected ? await syncBackProtected(base, head, input) : null;
+    const why = commits.length === 0
+      ? `\`${head}\` has no commits ahead of \`${base}\``
+      : `\`${head}\`'s ${commits.length} commit(s) ahead of \`${base}\` change no files (sync-back merge commits only)`;
+    return text(`Nothing to promote — ${why}.` + (tagNote ? `\n\n${tagNote}` : "") + (syncNote ? `\n\n${syncNote}` : ""));
   }
 
   const title = `Promote ${head} → ${base}`;
@@ -257,6 +276,14 @@ export async function handler(input: z.infer<typeof inputSchema>) {
       const afterMergeTag = await tagMergedPromotion(head, base);
       if (afterMergeTag) notes.push(afterMergeTag);
     }
+  }
+
+  // Sync-back (#361): bring the protected branch back into head as a true
+  // merge commit — right after the merge above, or whenever it has commits
+  // head lacks (a hotfix, or a gate PR the user merged by hand earlier).
+  if (config.syncBack && targetsProtected) {
+    const syncNote = await syncBackProtected(base, head, input);
+    if (syncNote) notes.push(syncNote);
   }
 
   if (mergedNow) {
@@ -412,5 +439,46 @@ async function mergeGatePullRequest(
     const msg = err instanceof Error ? err.message : String(err);
     console.warn(`[okffs] Protected merge of PR #${prNumber} failed:`, msg);
     return { merged: false, note: `⚠️ Could not merge PR #${prNumber} into \`${base}\`: ${msg}` };
+  }
+}
+
+
+// Sync `from` (the protected branch) back into `into` (the integration branch)
+// with a merge commit (#361). Opens or reuses the PR, waits (bounded) for its
+// checks — it is usually brand new — and merges under the shared gates. Any
+// unmet gate leaves the PR open for the next re-run. Never merges into the
+// protected branch: `into` is the promotion's head, which differs from it.
+async function syncBackProtected(
+  from: string,
+  into: string,
+  wait: { wait_timeout_seconds?: number } = {}
+): Promise<string | null> {
+  if (into === config.protectedBranch) return null;
+  try {
+    const [{ commits }, existing] = await Promise.all([compareBranches(from, into), getOpenPullRequestForBranch(from, into)]);
+    const plan = planSyncBack(commits.length, existing !== null);
+    if (plan === "none") return null;
+    const pr = existing ?? (await createPullRequest(syncBackTitle(from, into), syncBackBody(from, into), from, into));
+    const opened = plan === "open" ? `opened sync-back PR #${pr.number}` : `sync-back PR #${pr.number}`;
+
+    const detail = await getPullRequestWhenComputed(pr.number);
+    const refusal = await verifyMergeableWithWait(detail, into, {
+      wait: true,
+      timeoutSeconds: wait.wait_timeout_seconds,
+      retryHint: "re-run promote_branch to finish the sync-back.",
+      refetch: () => getPullRequestWhenComputed(pr.number),
+    });
+    if (refusal) return `🔄 OKFFS_SYNC_BACK: ${opened} (${pr.html_url}) — not merged yet: ${refusal}`;
+
+    const result = await mergePullRequest(pr.number, SYNC_BACK_MERGE_METHOD);
+    if (!result.merged) {
+      return `⚠️ OKFFS_SYNC_BACK: GitHub did not merge ${opened}: ${result.message || "no reason given"}.`;
+    }
+    const parents = await getCommitParents(result.sha);
+    return renderSyncBackMerged(pr.number, from, into, result.sha, parents);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn(`[okffs] Sync-back ${from} → ${into} failed:`, msg);
+    return `⚠️ OKFFS_SYNC_BACK: could not sync \`${from}\` → \`${into}\`: ${msg}`;
   }
 }

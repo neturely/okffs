@@ -208,6 +208,13 @@ export const config = {
   // reverses the #192/#211/#255 "never merge protected" invariant ONLY under
   // this explicit opt-in.
   autoMergeProtected: process.env.OKFFS_AUTO_MERGE_PROTECTED === "true",
+  // OKFFS_SYNC_BACK=true — opt-in (#361): every promote_branch run targeting the
+  // protected branch syncs it back into the head (base) branch when it has
+  // commits the head lacks — opens/reuses a `main → develop` PR and merges it
+  // with a MERGE COMMIT (never squash, whatever OKFFS_BASE_MERGE_METHOD says),
+  // under the same gates as merge_pull_request, then verifies 2 parents. Never
+  // merges into the protected branch. Default false.
+  syncBack: process.env.OKFFS_SYNC_BACK === "true",
 };
 
 // Warn once at startup if the feature is half-configured. Non-fatal: the

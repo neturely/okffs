@@ -117,3 +117,20 @@ export function mergeIssueMetadata(
 
   return { body, preserved };
 }
+
+/**
+ * The branch to use for an issue whose body has no **Branch:** line (#173,
+ * #304): an explicit branch wins; otherwise the checked-out branch, but only
+ * when it follows okffs's `{issue}-…` naming — an arbitrary branch is never
+ * trusted. Pure.
+ */
+export function inferIssueBranch(issueNumber: number, current: string | null, explicit?: string): string | null {
+  if (explicit) return explicit;
+  return current && current.startsWith(`${issueNumber}-`) ? current : null;
+}
+
+/** Append the **Branch:** line to an issue body (trailing whitespace trimmed only). Pure. */
+export function appendBranchLine(body: string | null, branch: string): string {
+  const base = (body ?? "").trimEnd();
+  return base ? `${base}\n\n**Branch:** \`${branch}\`` : `**Branch:** \`${branch}\``;
+}

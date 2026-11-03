@@ -48,6 +48,7 @@ export function buildBannerInfo(
   if (isTrue(values.OKFFS_PROMOTION_AUTO_REVIEW)) features.push("auto-request promotion reviewers");
   if (isTrue(values.OKFFS_AUTO_MERGE_PROTECTED)) features.push("auto-merge promotion into protected (re-run)");
   if (isTrue(values.OKFFS_TAG_RELEASE)) features.push("tag releases after merge");
+  if (isTrue(values.OKFFS_SYNC_BACK)) features.push("sync protected back into base (merge commit)");
   if (values.OKFFS_APPS) features.push(`multisite apps: ${values.OKFFS_APPS}`);
   if (values.OKFFS_APP) features.push(`this app: ${values.OKFFS_APP}`);
   if (isOff(values.OKFFS_INFER_PRIORITY) || isOff(values.OKFFS_INFER_EFFORT) || isOff(values.OKFFS_INFER_TYPE)) {

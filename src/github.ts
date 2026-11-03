@@ -348,6 +348,17 @@ export async function getBranchCommits(branchName: string, baseBranch: string): 
   );
 }
 
+/** Commits on `branchName` not on `baseBranch`, plus how many files differ (compare API; files cap at 300). */
+export async function compareBranches(
+  branchName: string,
+  baseBranch: string
+): Promise<{ commits: Array<{ sha: string; commit: { message: string } }>; filesChanged: number }> {
+  const data = await request<{ commits?: Array<{ sha: string; commit: { message: string } }>; files?: unknown[] }>(
+    `/repos/${owner}/${repo}/compare/${baseBranch}...${branchName}`
+  );
+  return { commits: data.commits ?? [], filesChanged: data.files?.length ?? 0 };
+}
+
 export async function getIssueComments(issueNumber: number): Promise<Array<{ body: string }>> {
   // Fetch newest-first so callers can reliably take the most recent N comments.
   return request(`/repos/${owner}/${repo}/issues/${issueNumber}/comments?per_page=100&sort=created&direction=desc`);
@@ -494,6 +505,12 @@ export interface CheckRunsResult {
 }
 export async function getCheckRuns(sha: string): Promise<CheckRunsResult> {
   return request(`/repos/${owner}/${repo}/commits/${sha}/check-runs?per_page=100`);
+}
+
+/** The commit sha a branch, tag or sha resolves to (commits API accepts all three; an annotated tag is peeled). */
+export async function resolveCommitSha(ref: string): Promise<string> {
+  const data = await request<{ sha: string }>(`/repos/${owner}/${repo}/commits/${encodeURIComponent(ref)}`);
+  return data.sha;
 }
 
 // Raw log text of a GitHub Actions job (#348). A check run created by Actions
@@ -707,6 +724,12 @@ export async function getLatestMergedPullRequestForBranch(head: string, base: st
 export async function getCommitParentSha(sha: string): Promise<string | null> {
   const data = await request<{ parents?: Array<{ sha: string }> }>(`/repos/${owner}/${repo}/commits/${sha}`);
   return data.parents?.[0]?.sha ?? null;
+}
+
+/** Every parent sha of a commit — 2+ for a true merge commit. */
+export async function getCommitParents(sha: string): Promise<string[]> {
+  const data = await request<{ parents?: Array<{ sha: string }> }>(`/repos/${owner}/${repo}/commits/${sha}`);
+  return (data.parents ?? []).map((p) => p.sha);
 }
 
 /**
