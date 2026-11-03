@@ -2,6 +2,7 @@ import { z } from "zod";
 import { addIssueComment, getIssue, extractBranchFromBody } from "../github.js";
 import { isEpicType, issueTypeName, epicToolRefusal } from "../epic.js";
 import { git, gitOutput, currentBranch } from "../git.js";
+import { resolveIssueBranch } from "../issue_branch.js";
 import { renderAutopilotDecisions, AUTOPILOT_DECISIONS_DESCRIPTION } from "../autopilot.js";
 import { matchSecretPaths, buildAutoCommitMessage, splitCommitMessage } from "../staging.js";
 
@@ -20,6 +21,7 @@ export const inputSchema = z.object({
   message: z.string().optional().describe("The commit message — used verbatim (word-boundary subject/body split) and in the issue comment"),
   include_untracked: z.boolean().optional().describe("Also stage untracked (new) files — off by default so scratch/backup files can't be silently swept into a commit (#265). Set true deliberately when the work added new files."),
   allow_secret_paths: z.boolean().optional().describe("Override the secrets deny-list refusal and stage matching files anyway. Only for files that genuinely contain no secrets."),
+  branch: z.string().optional().describe("Branch to commit to, for issues whose branch okffs didn't create (no **Branch:** line). Usually unnecessary — a checked-out branch named {issue-number}-… is inferred automatically. Either way okffs backfills the **Branch:** line onto the issue."),
   autopilot_decisions: z.array(z.string()).optional().describe(AUTOPILOT_DECISIONS_DESCRIPTION),
 }).passthrough();
 
@@ -28,6 +30,7 @@ const KNOWN_PARAMS = new Set([
   "message",
   "include_untracked",
   "allow_secret_paths",
+  "branch",
   "autopilot_decisions",
 ]);
 
@@ -65,22 +68,32 @@ export async function handler(input: z.infer<typeof inputSchema>) {
       }],
     };
   }
-  const branchName = extractBranchFromBody(issue.body);
+  // An Epic has no branch by design (#323) — refuse rather than inferring one
+  // from whatever is checked out; an explicit `branch` still wins.
+  if (!extractBranchFromBody(issue.body) && !input.branch && isEpicType(issueTypeName(issue.type))) {
+    return { content: [{ type: "text" as const, text: epicToolRefusal("commit_and_update", input.issue_number) }] };
+  }
 
-  // Without a **Branch:** line there is no issue branch to commit to — carrying
-  // on would commit onto whatever branch happens to be checked out and never
-  // push. Refuse early instead (PR #277 review).
+  // No **Branch:** line: use an explicit `branch`, or the checked-out branch
+  // when it follows the {issue}-… convention, and backfill the line — the same
+  // evidence create_pull_request trusts (#304). An arbitrary checkout is never
+  // used: that would commit onto the wrong branch (PR #277 review).
+  const resolved = await resolveIssueBranch(input.issue_number, issue.body, input.branch);
+  const branchName = resolved.branch;
   if (!branchName) {
-    if (isEpicType(issueTypeName(issue.type))) {
-      return { content: [{ type: "text" as const, text: epicToolRefusal("commit_and_update", input.issue_number) }] };
-    }
     return {
       content: [{
         type: "text" as const,
-        text: `Issue #${input.issue_number} has no associated branch (no **Branch:** line), so there's nothing to commit to. Use create_pull_request with an explicit \`branch\` to backfill the link, or add the **Branch:** line to the issue body.`,
+        text: `Issue #${input.issue_number} has no associated branch (no **Branch:** line), so there's nothing to commit to. Check out the issue's branch (named \`${input.issue_number}-…\`) so okffs can infer it, or pass an explicit \`branch\` — either way okffs backfills the **Branch:** line.`,
       }],
     };
   }
+  const backfillNote =
+    resolved.backfill === "backfilled"
+      ? `Backfilled the missing **Branch:** \`${branchName}\` line onto the issue.`
+      : resolved.backfill === "backfill-failed"
+        ? `⚠️ Committed to \`${branchName}\` but could not backfill the **Branch:** line onto the issue — add it by hand.`
+        : "";
 
   // Trim so a whitespace-only message (e.g. "   ") counts as absent — otherwise
   // it is truthy and yields an empty commit subject (#236).
@@ -256,6 +269,7 @@ export async function handler(input: z.infer<typeof inputSchema>) {
     skippedSection,
     hintText ? `\n**Summary:** ${hintText}` : "",
     decisionsSection ? `\n${decisionsSection}` : "",
+    backfillNote ? `\n${backfillNote}` : "",
   ].filter((l) => l !== undefined).join("\n");
 
   // The commit+push above is durable — a failure posting the comment must be
@@ -291,7 +305,7 @@ export async function handler(input: z.infer<typeof inputSchema>) {
       type: "text" as const,
       text: (idempotentRetry
         ? `Already committed and pushed as \`${commitHash}\` (idempotent retry) — refreshed issue #${input.issue_number}.`
-        : `Committed \`${commitHash}\` and updated issue #${input.issue_number}.`) + resultFiles + resultSkipped,
+        : `Committed \`${commitHash}\` and updated issue #${input.issue_number}.`) + (backfillNote ? `\n\n${backfillNote}` : "") + resultFiles + resultSkipped,
     }],
   };
 }
