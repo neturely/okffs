@@ -164,6 +164,16 @@ export function renderLogMatches(
   }
   if (matches.size === 0) out.push("No completed GitHub Actions run to search.");
   if (notSearched.length > 0) out.push(`⏳ Not searched yet (still running): ${notSearched.join(", ")} — re-run with wait_for_checks: true.`);
-  out.push(found ? "Verdict: matched." : "Verdict: NOT matched.");
+  // Absence is only proven when every run was searched: a run still running or
+  // a log that couldn't be read leaves the answer unknown, not "no".
+  const unreadable = [...matches.values()].filter((m) => typeof m === "string").length;
+  const unsettled = unreadable + notSearched.length;
+  out.push(
+    found
+      ? "Verdict: matched."
+      : unsettled > 0
+        ? `Verdict: UNKNOWN — not found in the logs searched, but ${unsettled} run(s) ${notSearched.length > 0 ? "still running" : ""}${notSearched.length > 0 && unreadable > 0 ? " or " : ""}${unreadable > 0 ? "unreadable" : ""}.`
+        : "Verdict: NOT matched."
+  );
   return out.join("\n");
 }
