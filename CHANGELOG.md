@@ -5,6 +5,16 @@ See [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-11-03
+### Added
+- `get_pr_checks` watches a deploy: `ref` (tag/branch/sha), bounded `wait_for_checks`, and `log_match` to confirm a line (e.g. a migration) appeared in the run's log ([#362](https://github.com/neturely/okffs/issues/362))
+- `OKFFS_SYNC_BACK=true`: `promote_branch` syncs the protected branch back into the base branch (`main → develop`) with a true merge commit — never squash — under the merge gates, and verifies it has 2 parents ([#361](https://github.com/neturely/okffs/issues/361))
+- `commit_and_update` infers the issue branch from a checked-out `{issue}-…` branch (or a new explicit `branch` param) when the issue has no **Branch:** line, and backfills the line — the same evidence `create_pull_request` trusts ([#304](https://github.com/neturely/okffs/issues/304))
+### Changed
+- npm publishing now uses Trusted Publishing (GitHub OIDC) instead of an expiring `NPM_TOKEN` secret ([#329](https://github.com/neturely/okffs/issues/329))
+### Fixed
+- Changelog fragment type now comes from the issue's native Type and labels (security → Security, Bug → Fixed, Feature/enhancement → Added) before title keywords ([#359](https://github.com/neturely/okffs/issues/359))
+
 ## [0.14.0] - 2026-10-31
 ### Fixed
 - wait_for_checks: grace period when no checks are registered yet ([#351](https://github.com/neturely/okffs/issues/351))
@@ -234,7 +244,8 @@ See [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `create_pull_request` commits the updated CHANGELOG onto the branch and pushes the branch before opening the PR, with non-blocking error handling ([#38](https://github.com/2b9sa2owa/okffs/issues/38)).
 - All git operations now run via `execFileSync` with argument arrays (no shell), removing command-injection risk from branch names and commit hints; tools also checkout the target branch before committing/pushing and restore the original branch afterward.
 
-[Unreleased]: https://github.com/neturely/okffs/compare/v0.14.0...HEAD
+[Unreleased]: https://github.com/neturely/okffs/compare/v0.15.0...HEAD
+[0.15.0]: https://github.com/neturely/okffs/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/neturely/okffs/compare/v0.13.2...v0.14.0
 [0.13.2]: https://github.com/neturely/okffs/compare/v0.13.1...v0.13.2
 [0.13.1]: https://github.com/neturely/okffs/compare/v0.13.0...v0.13.1
