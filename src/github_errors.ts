@@ -60,3 +60,33 @@ export function isPrCreateRaceError(msg: string): boolean {
   if (/no commits between/i.test(msg)) return true;
   return /"field":\s*"head"/.test(msg) && /"code":\s*"invalid"/.test(msg);
 }
+
+/**
+ * Describe a thrown fetch() error. Node's fetch (undici) throws a generic
+ * TypeError "fetch failed" and hides the real reason on `err.cause` — e.g.
+ * ECONNRESET, UND_ERR_SOCKET "other side closed", UND_ERR_CONNECT_TIMEOUT — so
+ * the cause is appended: "fetch failed (UND_ERR_SOCKET: other side closed)".
+ * An AbortSignal.timeout abort is named as a timeout (#345).
+ */
+export function describeFetchError(err: unknown): string {
+  if (!(err instanceof Error)) return String(err);
+  if (err.name === "TimeoutError") return `timed out (${err.message})`;
+  const cause = (err as { cause?: unknown }).cause;
+  if (!cause || typeof cause !== "object") return err.message;
+  const { code, message } = cause as { code?: unknown; message?: unknown };
+  const codeStr = typeof code === "string" && code ? code : "";
+  const msgStr = typeof message === "string" ? message.trim() : "";
+  let detail = msgStr;
+  if (codeStr && !msgStr.includes(codeStr)) detail = msgStr ? `${codeStr}: ${msgStr}` : codeStr;
+  return detail ? `${err.message} (${detail})` : err.message;
+}
+
+/**
+ * Is this thrown-error message a network-level failure — the request never got
+ * an HTTP response ("GitHub request to <url> failed: …", from timedFetch) —
+ * rather than a GitHub 4xx/5xx ("GitHub API error <status>: …")? Only these
+ * are candidates for the PR-create network retry (#345).
+ */
+export function isNetworkRequestError(msg: string): boolean {
+  return /^GitHub request to \S+ failed:/.test(msg);
+}

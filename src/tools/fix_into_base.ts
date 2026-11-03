@@ -32,6 +32,16 @@ export const inputSchema = z.object({
     .string()
     .optional()
     .describe("Optional summary for the PR body. When omitted, the body lists the commits being landed."),
+  wait_for_checks: z
+    .boolean()
+    .optional()
+    .describe("Wait (bounded) for the fix PR's pending checks before the merge attempt, instead of declining on 'in_progress' — same semantics as merge_pull_request's wait_for_checks."),
+  wait_timeout_seconds: z
+    .number()
+    .int()
+    .nonnegative()
+    .optional()
+    .describe("How long wait_for_checks may block, in seconds (default 90, capped at 180)."),
 });
 
 const text = (t: string) => ({ content: [{ type: "text" as const, text: t }] });
@@ -123,7 +133,7 @@ export async function handler(input: z.infer<typeof inputSchema>) {
   // mode. It self-gates on OKFFS_AUTO_MERGE_BASE and every green check, so when
   // merge is off or the PR isn't green it declines with an actionable reason and
   // the PR stays open (re-run once green, or call merge_pull_request directly).
-  const mergeResult = await mergePullRequest({ pr_number: pr.number });
+  const mergeResult = await mergePullRequest({ pr_number: pr.number, wait_for_checks: input.wait_for_checks, wait_timeout_seconds: input.wait_timeout_seconds });
   const mergeText = mergeResult.content.map((c) => c.text).join("\n");
   lines.push("", `— Merge attempt —`, mergeText);
 

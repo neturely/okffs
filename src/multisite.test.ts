@@ -1,0 +1,100 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { resolveIssueApp, multisiteWarnings } from "./multisite.js";
+
+const single = { sessionApp: null, apps: [] as string[], explicitIdentifier: null };
+
+test("single-site: no app, no label, identifier untouched", () => {
+  assert.deepEqual(resolveIssueApp({ ...single }), { app: null, label: null, identifier: null, error: null });
+  assert.deepEqual(resolveIssueApp({ ...single, explicitIdentifier: "okffs" }), { app: null, label: null, identifier: "okffs", error: null });
+});
+
+test("session app supplies label and identifier; explicit OKFFS_IDENTIFIER wins", () => {
+  const r = resolveIssueApp({ sessionApp: "finance", apps: ["finance", "health"], explicitIdentifier: null });
+  assert.deepEqual(r, { app: "finance", label: "finance", identifier: "finance", error: null });
+  const r2 = resolveIssueApp({ sessionApp: "finance", apps: ["finance"], explicitIdentifier: "fin" });
+  assert.equal(r2.identifier, "fin");
+  assert.equal(r2.label, "finance");
+});
+
+test("per-call override beats the session app and is validated against the registry", () => {
+  const ok = resolveIssueApp({ override: "Health", sessionApp: "finance", apps: ["finance", "health"], explicitIdentifier: null });
+  assert.deepEqual(ok, { app: "health", label: "health", identifier: "health", error: null });
+  const bad = resolveIssueApp({ override: "wealth", sessionApp: "finance", apps: ["finance", "health"], explicitIdentifier: null });
+  assert.equal(bad.app, null);
+  assert.match(bad.error ?? "", /not in OKFFS_APPS/);
+  const shape = resolveIssueApp({ override: "fin ance", sessionApp: null, apps: [], explicitIdentifier: null });
+  assert.match(shape.error ?? "", /not a valid app name/);
+  // No registry → any well-formed override is accepted.
+  assert.equal(resolveIssueApp({ override: "wealth", sessionApp: null, apps: [], explicitIdentifier: null }).label, "wealth");
+});
+
+test("multisite warnings are silent for single-site", () => {
+  assert.deepEqual(multisiteWarnings({ app: null, apps: [], inAppDir: false, rootFragmentCount: 3 }), []);
+  assert.deepEqual(multisiteWarnings({ app: null, apps: [], inAppDir: true, rootFragmentCount: 0 }), []);
+});
+
+test("multisite warnings: registry/app mismatches and orphaned root fragments", () => {
+  assert.match(multisiteWarnings({ app: "finance", apps: [], inAppDir: true, rootFragmentCount: 0 }).join("\n"), /OKFFS_APPS .*is unset/);
+  assert.match(multisiteWarnings({ app: "wealth", apps: ["finance"], inAppDir: true, rootFragmentCount: 0 }).join("\n"), /not listed in OKFFS_APPS/);
+  const w = multisiteWarnings({ app: "finance", apps: ["finance", "health"], inAppDir: true, rootFragmentCount: 2 });
+  assert.equal(w.length, 1);
+  assert.match(w[0], /2 pending changelog fragment/);
+  // Root fragments are not a hazard when releasing from the root itself.
+  assert.deepEqual(multisiteWarnings({ app: "root", apps: ["root", "finance"], inAppDir: false, rootFragmentCount: 2 }), []);
+  // Root session without OKFFS_APP while a registry exists → nudge.
+  assert.match(multisiteWarnings({ app: null, apps: ["finance"], inAppDir: false, rootFragmentCount: 0 }).join("\n"), /root session has no OKFFS_APP/);
+  // Clean app session → nothing.
+  assert.deepEqual(multisiteWarnings({ app: "finance", apps: ["finance", "health"], inAppDir: true, rootFragmentCount: 0 }), []);
+});
+
+test("fragmentRootFor: session app wins, else the issue's app label, else cwd", async () => {
+  const { fragmentRootFor } = await import("./multisite.js");
+  const apps = ["finance", "health"];
+  // Session app: cwd is the app root.
+  assert.deepEqual(fragmentRootFor({ sessionApp: "finance", apps, labels: [{ name: "health" }], cwdFromGitRoot: "finance" }), { root: ".", app: "finance", source: "session" });
+  // Root session, issue labelled health → health/ under the git root.
+  assert.deepEqual(fragmentRootFor({ sessionApp: null, apps, labels: [{ name: "okffs" }, { name: "health" }], cwdFromGitRoot: "" }), { root: "health", app: "health", source: "label" });
+  // Session below the root (no OKFFS_APP): climb out first.
+  assert.deepEqual(fragmentRootFor({ sessionApp: null, apps, labels: ["health"], cwdFromGitRoot: "tools/scripts" }), { root: "../../health", app: "health", source: "label" });
+  // Already inside that app's dir without OKFFS_APP → stay put.
+  assert.deepEqual(fragmentRootFor({ sessionApp: null, apps, labels: ["health"], cwdFromGitRoot: "health" }), { root: ".", app: "health", source: "label" });
+  // No app label, or no registry → cwd (single-site behaviour).
+  assert.deepEqual(fragmentRootFor({ sessionApp: null, apps, labels: [{ name: "bug" }], cwdFromGitRoot: "" }), { root: ".", app: null, source: "none" });
+  assert.deepEqual(fragmentRootFor({ sessionApp: null, apps: [], labels: [{ name: "health" }], cwdFromGitRoot: "" }), { root: ".", app: null, source: "none" });
+});
+
+test("releaseAppFor: explicit app, session app, refusal from a root session with a registry", async () => {
+  const { releaseAppFor } = await import("./multisite.js");
+  const apps = ["finance", "health"];
+  // Explicit app from the root → health/ root, health- tag prefix.
+  const r1 = releaseAppFor({ override: "health", sessionApp: null, apps, cwdFromGitRoot: "" });
+  assert.ok(r1.ok); if (r1.ok) { assert.equal(r1.app.root, "health"); assert.equal(r1.app.tagPrefix, "health-"); }
+  // Explicit app from inside that app's dir → ".".
+  const r2 = releaseAppFor({ override: "health", sessionApp: null, apps, cwdFromGitRoot: "health" });
+  assert.ok(r2.ok); if (r2.ok) assert.equal(r2.app.root, ".");
+  // Explicit app from a nested dir → climb out.
+  const r3 = releaseAppFor({ override: "finance", sessionApp: "health", apps, cwdFromGitRoot: "health" });
+  assert.ok(r3.ok); if (r3.ok) assert.equal(r3.app.root, "../finance");
+  // Session app, no override → cwd is the app root.
+  const r4 = releaseAppFor({ sessionApp: "finance", apps, cwdFromGitRoot: "finance" });
+  assert.ok(r4.ok); if (r4.ok) { assert.equal(r4.app.root, "."); assert.equal(r4.app.name, "finance"); }
+  // Root session with a registry and no app → refused, listing the apps.
+  const r5 = releaseAppFor({ sessionApp: null, apps, cwdFromGitRoot: "" });
+  assert.ok(!r5.ok); if (!r5.ok) assert.match(r5.error, /one of: finance, health/);
+  // Unknown / malformed app → refused.
+  assert.ok(!releaseAppFor({ override: "wealth", sessionApp: null, apps, cwdFromGitRoot: "" }).ok);
+  assert.ok(!releaseAppFor({ override: "../x", sessionApp: null, apps: [], cwdFromGitRoot: "" }).ok);
+  // Single-site: no registry, no app → the flat descriptor.
+  const r6 = releaseAppFor({ sessionApp: null, apps: [], cwdFromGitRoot: "" });
+  assert.ok(r6.ok); if (r6.ok) { assert.equal(r6.app.name, null); assert.equal(r6.app.tagPrefix, "v"); }
+});
+
+test("appFromLabels matches a registered app from label objects or strings", async () => {
+  const { appFromLabels } = await import("./multisite.js");
+  assert.equal(appFromLabels([{ name: "okffs" }, { name: "Finance" }], ["finance", "health"]), "finance");
+  assert.equal(appFromLabels(["health"], ["finance", "health"]), "health");
+  assert.equal(appFromLabels([{ name: "bug" }], ["finance"]), null);
+  assert.equal(appFromLabels([{ name: "finance" }], []), null); // no registry → never marks
+  assert.equal(appFromLabels(undefined, ["finance"]), null);
+});

@@ -2,6 +2,10 @@
 // per check but never blocks or reverts the .env that was just written — the
 // wizard prints the results and exits 0 regardless.
 
+import { existsSync, statSync } from "node:fs";
+import { join } from "node:path";
+import { parseEnv } from "./env.js";
+import { findGitRoot } from "../env_load.js";
 import {
   resolveToken,
   resolveOwnerRepo,
@@ -112,6 +116,33 @@ export async function runSanity(values: Record<string, string>): Promise<SanityO
     } else {
       results.push({ label: "Classic PAT", status: "warn", detail: `OKFFS_CLASSIC_PAT=true but the token scopes (${scopes || "none"}) do not include admin:org.` });
     }
+  }
+
+  // 6. Multisite (#313): every registered app has a directory and its own .env.
+  if (values.OKFFS_APPS) {
+    const root = findGitRoot(process.cwd()) ?? process.cwd();
+    const rootApp = (values.OKFFS_APP ?? "").trim().toLowerCase();
+    for (const app of values.OKFFS_APPS.split(",").map((a) => a.trim().toLowerCase()).filter(Boolean)) {
+      if (app === rootApp) {
+        results.push({ label: `App ${app}`, status: "pass", detail: "the repo root is this app (OKFFS_APP set in the root .env)" });
+        continue;
+      }
+      const dir = join(root, app);
+      if (!existsSync(dir) || !statSync(dir).isDirectory()) {
+        results.push({ label: `App ${app}`, status: "warn", detail: `no ${app}/ directory at the repo root` });
+        continue;
+      }
+      const site = parseEnv(join(dir, ".env"));
+      if (!site.exists) {
+        results.push({ label: `App ${app}`, status: "warn", detail: `${app}/.env missing — run \`okffs setup\` inside ${app}/ (or configure with app: "${app}")` });
+      } else if (site.values.OKFFS_APP !== app) {
+        results.push({ label: `App ${app}`, status: "warn", detail: `${app}/.env sets OKFFS_APP=${site.values.OKFFS_APP ?? "(unset)"}, expected ${app}` });
+      } else {
+        results.push({ label: `App ${app}`, status: "pass", detail: `${app}/.env → OKFFS_APP=${app}` });
+      }
+    }
+  } else if (values.OKFFS_APP) {
+    results.push({ label: "Multisite", status: "warn", detail: `OKFFS_APP=${values.OKFFS_APP} is set but OKFFS_APPS (the registry, root .env) is not.` });
   }
 
   return { results, resolved };

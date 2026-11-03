@@ -67,6 +67,8 @@ export function build(args: Record<string, string | undefined>) {
     `- Booleans that default on (inference/metadata) should stay on unless the user wants them off.`,
     `- If the user wants \`OKFFS_AUTO_MERGE_BASE=true\`, confirm \`OKFFS_PROTECTED_BRANCH\` is also set — the merge tool refuses without it.`,
     `- The Projects and promotion sections only matter if the user uses a GitHub Projects board / a protected-branch promotion flow; it's fine to skip them.`,
+    `- \`OKFFS_TAG_RELEASE\` and \`OKFFS_AUTO_MERGE_PROTECTED\` are the explicit opt-ins for the fully handled promotion (re-run merges + tags). Spell out that a tag usually triggers an irreversible CI publish before the user turns them on.`,
+    `- **Multisite**: if the repo hosts several apps (e.g. finance/ and health/), set \`OKFFS_APPS\` in the root .env, then call \`configure\` once more per app with \`app: "<name>"\` — that writes \`<name>/.env\` with \`OKFFS_APP\` (it inherits the root .env; only values that differ go there). If the working directory IS an app directory (a root .env exists above it), configure just \`OKFFS_APP\` here. \`configure\` also appends a depth-agnostic \`.env\` rule to .gitignore when missing — mention it when it reports doing so.`,
     ``,
     `## Variable reference`,
     renderReference(),

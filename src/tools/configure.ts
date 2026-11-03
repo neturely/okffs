@@ -1,5 +1,10 @@
 import { z } from "zod";
 import { join } from "node:path";
+import { existsSync, statSync, readFileSync, writeFileSync } from "node:fs";
+
+import { findGitRoot } from "../env_load.js";
+import { isValidAppName } from "../apps.js";
+import { gitignoreCoversEnv, appendEnvIgnore } from "../cli/gitignore.js";
 
 import { allKeys } from "../cli/manifest.js";
 import { parseEnv, serializeEnv, writeEnv, type Collected } from "../cli/env.js";
@@ -12,7 +17,9 @@ export const description =
   "Reuses the same manifest + serializer as the `okffs setup` CLI, so both paths produce identical files: okffs owns ONLY a marked block, and the user's own variables and comments outside it are preserved verbatim. " +
   "Pass `set` (a map of okffs env var → value) for variables to configure, and/or `declined` (a list of keys) for variables the user explicitly chose to skip (written as commented placeholders so a later sync won't re-ask them). " +
   "Existing configured values that you don't pass are left untouched. Keys are validated against the manifest — unknown keys are rejected. " +
-  "Typically called by the /okffs:setup prompt after interviewing the user; not usually called directly. Secrets (GITHUB_TOKEN) are masked in the response.";
+  "Typically called by the /okffs:setup prompt after interviewing the user; not usually called directly. Secrets (GITHUB_TOKEN) are masked in the response. " +
+  "Multisite: pass `app` to write `{app}/.env` (that app directory's own .env, which inherits the root's) instead — OKFFS_APP is set to the app automatically. " +
+  "Unless `ensure_gitignore` is false, a missing depth-agnostic `.env` rule is appended to the repo's .gitignore so no .env (root or app) can be committed.";
 
 export const inputSchema = z.object({
   set: z
@@ -23,6 +30,14 @@ export const inputSchema = z.object({
     .array(z.string())
     .optional()
     .describe("Env var names the user explicitly declined — written as `# KEY=` placeholders so sync mode treats them as asked-and-declined, not new."),
+  app: z
+    .string()
+    .optional()
+    .describe("Multisite: write this app directory's own .env (`{app}/.env` under the working directory) with OKFFS_APP set to it, instead of the root .env. The directory must exist."),
+  ensure_gitignore: z
+    .boolean()
+    .optional()
+    .describe("Append a depth-agnostic `.env` rule to the repo .gitignore when it lacks one (default true)."),
 });
 
 const SECRET_KEYS = new Set(["GITHUB_TOKEN"]);
@@ -53,7 +68,19 @@ export async function handler(input: z.infer<typeof inputSchema>) {
     };
   }
 
-  const envPath = join(process.cwd(), ".env");
+  // Multisite (#313): target an app directory's .env.
+  const app = input.app?.trim().toLowerCase();
+  if (app !== undefined && app !== "") {
+    if (!isValidAppName(app)) {
+      return { content: [{ type: "text" as const, text: `[okffs] app "${input.app}" is not a valid app name (lowercase letters, digits, hyphens). No changes were written.` }], isError: true };
+    }
+    const dir = join(process.cwd(), app);
+    if (!existsSync(dir) || !statSync(dir).isDirectory()) {
+      return { content: [{ type: "text" as const, text: `[okffs] No ${app}/ directory under ${process.cwd()} — create it first. No changes were written.` }], isError: true };
+    }
+    set.OKFFS_APP = app;
+  }
+  const envPath = app ? join(process.cwd(), app, ".env") : join(process.cwd(), ".env");
   const parsed = parseEnv(envPath);
 
   // Seed from the existing file so untouched vars are preserved, then apply the
@@ -83,6 +110,21 @@ export async function handler(input: z.infer<typeof inputSchema>) {
     };
   }
 
+  // .gitignore must cover .env at every depth (root AND app directories).
+  let gitignoreNote = "";
+  if (input.ensure_gitignore !== false) {
+    try {
+      const giPath = join(findGitRoot(process.cwd()) ?? process.cwd(), ".gitignore");
+      const content = existsSync(giPath) ? readFileSync(giPath, "utf8") : "";
+      if (!gitignoreCoversEnv(content)) {
+        writeFileSync(giPath, appendEnvIgnore(content), "utf8");
+        gitignoreNote = `Added a depth-agnostic \`.env\` rule to ${giPath} (it ${content.trim() ? "did not ignore .env files at every depth" : "did not exist"}).`;
+      }
+    } catch (err) {
+      gitignoreNote = `⚠ Could not verify .gitignore covers .env: ${err instanceof Error ? err.message : String(err)} — make sure every .env is git-ignored.`;
+    }
+  }
+
   // Build a human-readable summary (masking secrets).
   const setLines = Object.entries(set).map(([k, v]) => `  ${k}=${SECRET_KEYS.has(k) ? mask(v) : v}`);
   const declinedLine = declined.length ? `  declined (left unset): ${declined.join(", ")}` : "";
@@ -92,6 +134,8 @@ export async function handler(input: z.infer<typeof inputSchema>) {
     setLines.length ? `Set ${setLines.length} variable(s):` : "",
     ...setLines,
     declinedLine,
+    gitignoreNote,
+    app ? `This is ${app}/.env — it inherits the root .env; run okffs from inside ${app}/ to act as that app.` : "",
     "",
     "Reminder: restart the MCP server (or Claude Code) so okffs re-reads .env.",
   ]

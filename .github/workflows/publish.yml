@@ -7,8 +7,12 @@ on:
   workflow_dispatch: {}   # manual: runs the verify-only job (publishes nothing)
 
 jobs:
-  # Manual credential check — proves NPM_TOKEN scope and MCP Registry OIDC trust
-  # WITHOUT publishing anything. Run this before cutting a real tag.
+  # Manual pre-flight — checks the package is reachable on npm and MCP Registry
+  # OIDC trust WITHOUT publishing anything. npm publishing uses Trusted
+  # Publishing (OIDC, #329): there is no stored token to check, so npm auth is
+  # only proven by a real publish — make sure the Trusted Publisher is
+  # configured on npmjs.com (@neturely/okffs → Settings → Trusted Publisher →
+  # GitHub Actions: neturely / okffs / publish.yml) before cutting a tag.
   verify:
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
@@ -23,12 +27,10 @@ jobs:
           node-version: 'lts/*'
           registry-url: 'https://registry.npmjs.org'
 
-      - name: Check npm auth + package access (no publish)
+      - name: Check the package is reachable on npm (no publish, no token)
         run: |
-          echo "Authenticated to npm as: $(npm whoami)"
-          npm access list packages @neturely 2>/dev/null || echo "note: could not list scope packages (first publish, or token lacks read) — whoami above is the key check"
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          echo "Published @neturely/okffs: $(npm view @neturely/okffs version)"
+          echo "note: npm auth is OIDC Trusted Publishing — only a real tag publish proves it."
 
       - name: Install mcp-publisher
         run: curl -L "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz" | tar xz mcp-publisher
@@ -41,7 +43,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write   # write: create the GitHub Release from the pushed tag (#156)
-      id-token: write   # required for mcp-publisher's github-oidc auth (no stored token)
+      id-token: write   # OIDC: npm Trusted Publishing (#329) and mcp-publisher's github-oidc auth — no stored tokens
     steps:
       - uses: actions/checkout@v7
 
@@ -82,10 +84,16 @@ jobs:
           fi
           echo "Tag matches package.json ($pkg); publishing to dist-tag '${{ steps.pkg.outputs.dist_tag }}'."
 
+      # npm Trusted Publishing (OIDC, #329): no stored NPM_TOKEN — npm exchanges
+      # the job's id-token (permissions: id-token: write, above) for a
+      # short-lived publish credential. Needs npm >= 11.5.1, newer than the npm
+      # bundled with the LTS Node, hence the upgrade. OIDC publishes carry
+      # provenance automatically.
+      - name: Upgrade npm for Trusted Publishing
+        run: npm install -g npm@latest
+
       - name: Publish to npm
         run: npm publish --tag "${{ steps.pkg.outputs.dist_tag }}"
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       # ---- MCP Registry (io.github.neturely/okffs) — stable releases only ----
       - name: Sync server.json version to package.json

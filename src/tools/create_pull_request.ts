@@ -1,3 +1,4 @@
+import { isEpicType, issueTypeName, epicToolRefusal } from "../epic.js";
 import { z } from "zod";
 import {
   getIssue,
@@ -16,13 +17,14 @@ import {
 } from "../github.js";
 import { config } from "../config.js";
 import { updateProjectDocs } from "../docs.js";
+import { fragmentRootForIssue } from "../multisite.js";
 import { git, currentBranch, pushEmptyInitCommit } from "../git.js";
 import { renderAutopilotDecisions, AUTOPILOT_DECISIONS_DESCRIPTION } from "../autopilot.js";
 
 export const name = "create_pull_request";
 
 export const description =
-  "Create a pull request for the current issue branch. Reads the issue, its comments, and commits to generate a PR title and body. Always includes Closes #N. If OKFFS_UPDATE_DOCS is true, writes a per-issue changelog fragment under .changes/unreleased/ (assembled into CHANGELOG.md at release time by prepare_release — not a direct CHANGELOG.md edit), plus SECURITY.md for security-related changes, and commits them onto the branch before creating the PR. If a PR already exists for the branch (e.g. a draft opened by create_issue under OKFFS_AUTO_PR=true), it is updated and marked ready for review instead of erroring. By default, a branch with no commits ahead of base is refused (a PR needs a diff); pass allow_empty: true to instead push an empty init commit so the branch diverges and open a **draft** tracking PR — the same mechanism create_issue uses under OKFFS_AUTO_PR, for backfilling a PR onto a branch that was created empty. Posts a summary comment to the issue. If the issue has no okffs-created branch link (no **Branch:** line — e.g. a pre-okffs issue or a hand-made branch), pass an explicit branch, or check out a branch named {issue-number}-… and okffs infers it; either way it backfills the **Branch:** line. If the PR targets OKFFS_PROTECTED_BRANCH, okffs still opens it (opening is safe and reversible) and adds a reminder that the merge/tag stay with the user — OKFFS_PROTECTED_BRANCH governs autonomous merging, never PR creation.";
+  "Create a pull request for the current issue branch. Reads the issue, its comments, and commits to generate a PR title and body. Always includes Closes #N. If OKFFS_UPDATE_DOCS is true, writes a per-issue changelog fragment under .changes/unreleased/ — under the issue's app directory in a multisite repo: the session's OKFFS_APP, else the registered app named by the issue's label (assembled into CHANGELOG.md at release time by prepare_release — not a direct CHANGELOG.md edit), plus SECURITY.md for security-related changes, and commits them onto the branch before creating the PR. If a PR already exists for the branch (e.g. a draft opened by create_issue under OKFFS_AUTO_PR=true), it is updated and marked ready for review instead of erroring. By default, a branch with no commits ahead of base is refused (a PR needs a diff); pass allow_empty: true to instead push an empty init commit so the branch diverges and open a **draft** tracking PR — the same mechanism create_issue uses under OKFFS_AUTO_PR, for backfilling a PR onto a branch that was created empty. Posts a summary comment to the issue. If the issue has no okffs-created branch link (no **Branch:** line — e.g. a pre-okffs issue or a hand-made branch), pass an explicit branch, or check out a branch named {issue-number}-… and okffs infers it; either way it backfills the **Branch:** line. If the PR targets OKFFS_PROTECTED_BRANCH, okffs still opens it (opening is safe and reversible) and adds a reminder that the merge/tag stay with the user — OKFFS_PROTECTED_BRANCH governs autonomous merging, never PR creation.";
 
 export const inputSchema = z.object({
   issue_number: z.number().int().positive().describe("The issue number to create a PR for"),
@@ -41,6 +43,13 @@ export async function handler(input: z.infer<typeof inputSchema>) {
   // explicit `branch`, or infer it from the current git branch when it follows the
   // {issue-number}-… convention, then backfill the **Branch:** line so later okffs
   // calls resolve it automatically (#173).
+  // An Epic has no branch by design (#323) — refuse with a pointer to the
+  // children rather than inferring a branch from whatever is checked out. An
+  // explicit `branch` still wins, for the rare deliberate case.
+  if (!branchName && !input.branch && isEpicType(issueTypeName(issue.type))) {
+    return { content: [{ type: "text" as const, text: epicToolRefusal("create_pull_request", input.issue_number) }] };
+  }
+
   if (!branchName) {
     const current = currentBranch();
     const inferred = current && current.startsWith(`${input.issue_number}-`) ? current : null;
@@ -181,13 +190,20 @@ export async function handler(input: z.infer<typeof inputSchema>) {
   const body = bodyParts.join("\n");
 
   let updatedDocs: string[] = [];
+  // Multisite (#330): the fragment belongs to the issue's app — the session's
+  // OKFFS_APP, else the registered app named by the issue's label — so a PR
+  // opened from a root session doesn't strand the fragment at the repo root.
+  const fragmentRoot = fragmentRootForIssue(issue.labels);
   if (config.updateDocs) {
     updatedDocs = await updateProjectDocs({
       trigger: "create_pull_request",
       issueNumber: input.issue_number,
       issueTitle: issue.title,
+      issueType: issue.type?.name ?? null,
+      issueLabels: issue.labels ?? null,
       summary: input.summary ?? cleanedDescription,
       branchName,
+      appRoot: fragmentRoot.root,
     });
   }
 
@@ -296,7 +312,15 @@ export async function handler(input: z.infer<typeof inputSchema>) {
     ? `\n\n💡 OKFFS_UPDATE_GUIDANCE is on: if this PR adds or changes functionality, config, or conventions, update CLAUDE.md to match (run the update_guidance prompt) and commit it to \`${branchName}\` so it's part of this PR.`
     : "";
 
+  // Say where the changelog fragment went and why (#330) — the one place a
+  // multisite user can catch a mis-scoped fragment before release time.
+  const fragmentPath = updatedDocs.find((f) => f.includes(".changes"));
+  const fragmentNote = fragmentPath
+    ? `\nChangelog fragment: ${fragmentPath}` +
+      (fragmentRoot.source === "label" ? ` (app "${fragmentRoot.app}" from the issue's label)` : fragmentRoot.source === "session" ? ` (app "${fragmentRoot.app}" from OKFFS_APP)` : "")
+    : "";
+
   return {
-    content: [{ type: "text" as const, text: `PR #${pr.number} ${action}: ${pr.html_url}${autoCloseNote}${protectedNote}${guidanceNote}` }],
+    content: [{ type: "text" as const, text: `PR #${pr.number} ${action}: ${pr.html_url}${fragmentNote}${autoCloseNote}${protectedNote}${guidanceNote}` }],
   };
 }

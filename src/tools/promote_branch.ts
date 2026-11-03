@@ -1,16 +1,41 @@
 import { z } from "zod";
 import {
   getRepoDefaultBranch,
-  getBranchCommits,
+  compareBranches,
+  getCommitParents,
   createPullRequest,
   getOpenPullRequestForBranch,
   updatePullRequest,
   requestReviewers,
   getPullRequestReview,
+  getLatestMergedPullRequestForBranch,
+  getCommitParentSha,
+  getTagSha,
+  createTag,
+  getFileContentAtRef,
+  getRef,
+  getReleaseByTag,
+  createRelease,
+  getPullRequest,
+  mergePullRequest,
+  type PullRequestDetail,
 } from "../github.js";
+import { verifyMergeableWithWait, prLabel } from "../pr_gates.js";
+import { decideTags, renderTagReport, type AppVersionProbe } from "../tagging.js";
+import { probeAppVersions } from "../app_versions.js";
+import { extractChangelogSection, releaseTitle, isPrereleaseVersion, releaseNotes } from "../release_notes.js";
+import { summarizeReleases, renderReleaseSection, renderReleaseNote } from "../release_summary.js";
 import { config } from "../config.js";
 import { addIssueToProject, getProjectMetadata, setProjectFieldValue } from "../projects.js";
 import { summarizeReviewThreads, renderReviewGateWarning } from "../review_gate.js";
+import {
+  SYNC_BACK_MERGE_METHOD,
+  planSyncBack,
+  syncBackTitle,
+  syncBackBody,
+  renderSyncBackMerged,
+  isEmptyPromotion,
+} from "../sync_back.js";
 
 export const name = "promote_branch";
 
@@ -27,7 +52,14 @@ export const description =
   "repeat (possibly billable) reviews; when OKFFS_PROMOTION_STATUS is set, the board card lands in that column. " +
   "A re-run on an existing gate PR also reports its unresolved review threads (e.g. Copilot feedback that landed after " +
   "the review was requested) and points at the address_pr_review loop — so re-running promote_branch is the way to " +
-  "check the release gate before handing the merge to the user.";
+  "check the release gate before handing the merge to the user. With OKFFS_TAG_RELEASE=true, a re-run AFTER the gate PR " +
+  "has been merged tags the release(s) it carried (v1.2.0, or finance-1.2.0 per app whose version changed) on the merge commit. " +
+  "With OKFFS_AUTO_MERGE_PROTECTED=true, a re-run on an EXISTING gate PR merges it into the protected branch (OKFFS_PROTECTED_MERGE_METHOD) " +
+  "once every gate passes — open, non-draft, no conflicts, all checks green, no pending requested review, every thread resolved — and, " +
+  "with OKFFS_TAG_RELEASE too, tags in the same call: the fully handled promotion. Never on the call that creates the PR. " +
+  "With OKFFS_SYNC_BACK=true, any run whose protected branch has commits the head lacks (right after that merge, or after a manual one) " +
+  "opens/reuses a protected → head sync-back PR (e.g. main → develop), waits (bounded) for its checks and merges it with a MERGE COMMIT — never squash — " +
+  "under the same gates, then verifies the commit has 2 parents. An unmet gate leaves it open for the next re-run.";
 
 export const inputSchema = z.object({
   head: z
@@ -42,6 +74,16 @@ export const inputSchema = z.object({
     .string()
     .optional()
     .describe("Optional summary for the PR body. When omitted, the body lists the commits being promoted."),
+  wait_for_checks: z
+    .boolean()
+    .optional()
+    .describe("Only with OKFFS_AUTO_MERGE_PROTECTED=true on a re-run: wait (bounded) for the gate PR's pending checks before the merge attempt. A pending requested review is still reported, never waited on."),
+  wait_timeout_seconds: z
+    .number()
+    .int()
+    .nonnegative()
+    .optional()
+    .describe("How long wait_for_checks — and the OKFFS_SYNC_BACK sync-back PR's check wait, which is always on — may block, in seconds (default 90, capped at 180)."),
 });
 
 const text = (t: string) => ({ content: [{ type: "text" as const, text: t }] });
@@ -75,9 +117,24 @@ export async function handler(input: z.infer<typeof inputSchema>) {
   // the PR is never gated (the merge/tag are the user-gated steps).
   const targetsProtected = config.protectedBranch && base === config.protectedBranch;
 
-  const commits = await getBranchCommits(head, base);
-  if (commits.length === 0) {
-    return text(`Nothing to promote — \`${head}\` has no commits ahead of \`${base}\`.`);
+  // Post-merge tagging (#310): before looking at what is left to promote, tag
+  // the release(s) carried by the LAST merged head→base PR when opted in. Runs
+  // on every call so the natural "re-run promote_branch after merging" step is
+  // enough; idempotent (an existing tag at the merge commit is a quiet no-op).
+  // Both opt-ins are scoped to the CONFIGURED protected branch: an explicit
+  // non-protected base (or no protected branch at all) never tags or merges.
+  const tagNote = config.tagRelease && targetsProtected ? await tagMergedPromotion(head, base) : null;
+
+  const { commits, filesChanged } = await compareBranches(head, base);
+  if (isEmptyPromotion(commits.length, filesChanged)) {
+    // Sync-back (#361) runs AFTER this comparison: a sync leaves `head` one
+    // merge commit ahead with an identical tree, which must not read as work
+    // to promote — hence the file-count check too.
+    const syncNote = config.syncBack && targetsProtected ? await syncBackProtected(base, head, input) : null;
+    const why = commits.length === 0
+      ? `\`${head}\` has no commits ahead of \`${base}\``
+      : `\`${head}\`'s ${commits.length} commit(s) ahead of \`${base}\` change no files (sync-back merge commits only)`;
+    return text(`Nothing to promote — ${why}.` + (tagNote ? `\n\n${tagNote}` : "") + (syncNote ? `\n\n${syncNote}` : ""));
   }
 
   const title = `Promote ${head} → ${base}`;
@@ -97,9 +154,27 @@ export async function handler(input: z.infer<typeof inputSchema>) {
     return baseIsDefault ? subject.replace(/#(\d+)/g, "`#$1`") : subject;
   };
   const changes = commits.map((c) => `- ${subjectOf(c)}`).join("\n");
+
+  // Releases carried by this promotion (#312): apps whose version differs
+  // between the head tip and the base tip — the same rule the post-merge
+  // tagging applies, so the section names exactly the tags the merge yields.
+  // Best-effort: a probe failure drops the section, never the PR.
+  let releaseSection: string | null = null;
+  let releaseNote: string | null = null;
+  try {
+    const [headRef, baseRef] = await Promise.all([getRef(head), getRef(base)]);
+    const pairs = await probeAppVersions(headRef.object.sha, baseRef.object.sha);
+    const entries = summarizeReleases(pairs.map((p) => ({ name: p.name, tagPrefix: p.tagPrefix, versionAtHead: p.versionAtA, versionAtBase: p.versionAtB })));
+    releaseSection = renderReleaseSection(entries);
+    releaseNote = renderReleaseNote(entries, config.tagRelease);
+  } catch (err) {
+    console.warn(`[okffs] Could not summarise releases for ${head} → ${base}:`, err instanceof Error ? err.message : err);
+  }
+
   const body = [
     input.summary ?? `Promotion PR from \`${head}\` into \`${base}\`. No \`Closes #N\` — this is a branch promotion, not an issue.`,
     ``,
+    ...(releaseSection ? [releaseSection, ``] : []),
     `## Promoting (${commits.length} commit${commits.length === 1 ? "" : "s"})`,
     changes,
   ].join("\n");
@@ -124,6 +199,7 @@ export async function handler(input: z.infer<typeof inputSchema>) {
   // failure warns with an [okffs] prefix, is surfaced in the response, and never
   // fails the promotion.
   const notes: string[] = [];
+  if (releaseNote) notes.push(releaseNote);
 
   // Auto-request reviewers only when explicitly opted in (OKFFS_PROMOTION_AUTO_REVIEW)
   // and only on a NEWLY-created gate PR — never on updates/re-runs — so a paid
@@ -187,11 +263,222 @@ export async function handler(input: z.infer<typeof inputSchema>) {
     }
   }
 
-  const handBack = targetsProtected
-    ? `\n\n🔒 \`${base}\` is OKFFS_PROTECTED_BRANCH — okffs opened this PR but will NOT merge or tag. Review it, then merge and tag yourself.`
-    : `\n\nReview and merge when ready — okffs does not merge or tag.`;
+  // Opt-in protected merge (#311): only on a re-run over an EXISTING gate PR —
+  // never on the creating call, so a requested (e.g. Copilot) review has a
+  // chance to land and the pending-review gate can see it. Every refusal is
+  // reported, not prompted; the PR stays open for the next re-run.
+  let mergedNow = false;
+  if (action === "updated" && config.autoMergeProtected && targetsProtected) {
+    const outcome = await mergeGatePullRequest(pr.number, base, input);
+    notes.push(outcome.note);
+    mergedNow = outcome.merged;
+    if (mergedNow && config.tagRelease && targetsProtected) {
+      const afterMergeTag = await tagMergedPromotion(head, base);
+      if (afterMergeTag) notes.push(afterMergeTag);
+    }
+  }
+
+  // Sync-back (#361): bring the protected branch back into head as a true
+  // merge commit — right after the merge above, or whenever it has commits
+  // head lacks (a hotfix, or a gate PR the user merged by hand earlier).
+  if (config.syncBack && targetsProtected) {
+    const syncNote = await syncBackProtected(base, head, input);
+    if (syncNote) notes.push(syncNote);
+  }
+
+  if (mergedNow) {
+    const lines = [`Promotion PR #${pr.number} merged into \`${base}\`: ${pr.html_url}`];
+    if (tagNote) notes.unshift(tagNote);
+    lines.push("", ...notes);
+    if (!config.tagRelease) lines.push("", `Tag the release yourself (OKFFS_TAG_RELEASE is off).`);
+    return text(lines.join("\n"));
+  }
+
+  const mergeStep = config.autoMergeProtected && targetsProtected
+    ? `Re-run promote_branch once the review has landed and been addressed — OKFFS_AUTO_MERGE_PROTECTED=true merges it when every gate passes${config.tagRelease ? " and OKFFS_TAG_RELEASE=true then tags" : ""}.`
+    : null;
+  const tagStep = config.tagRelease
+    ? `After you merge, re-run promote_branch — OKFFS_TAG_RELEASE=true tags the release(s) it carried.`
+    : `then merge and tag yourself.`;
+  const handBack = mergeStep
+    ? `\n\n🔒 \`${base}\`: ${mergeStep}`
+    : targetsProtected
+      ? `\n\n🔒 \`${base}\` is OKFFS_PROTECTED_BRANCH — okffs opened this PR but will NOT merge${config.tagRelease ? "" : " or tag"}. Review it, ${tagStep}`
+      : `\n\nReview and merge when ready — okffs does not merge${config.tagRelease ? "" : " or tag"}.${config.tagRelease ? ` ${tagStep}` : ""}`;
 
   const lines = [`Promotion PR #${pr.number} ${action}: ${pr.html_url}`];
+  if (tagNote) notes.unshift(tagNote);
   if (notes.length > 0) lines.push("", ...notes);
   return text(lines.join("\n") + handBack);
+}
+
+
+// Tag the release(s) carried by the latest merged head→base PR. Best-effort:
+// any failure is reported in the note and never blocks the promotion itself.
+async function tagMergedPromotion(head: string, base: string): Promise<string | null> {
+  try {
+    const merged = await getLatestMergedPullRequestForBranch(head, base);
+    if (!merged || !merged.merge_commit_sha) return null;
+    const mergeSha = merged.merge_commit_sha;
+    const [parentSha, tip] = await Promise.all([getCommitParentSha(mergeSha), getRef(base)]);
+    const pairs = await probeAppVersions(mergeSha, parentSha);
+    const probes: AppVersionProbe[] = pairs.map((p) => ({
+      name: p.name,
+      tagPrefix: p.tagPrefix,
+      versionAtMerge: p.versionAtA,
+      versionAtParent: p.versionAtB,
+    }));
+    const candidates = probes.filter((p) => p.versionAtMerge).map((p) => `${p.tagPrefix}${p.versionAtMerge}`);
+    const existingTags = new Map<string, string>();
+    for (const tag of candidates) {
+      const sha = await getTagSha(tag);
+      if (sha) existingTags.set(tag, sha);
+    }
+    const decisions = decideTags(probes, { mergeCommitSha: mergeSha, protectedTipSha: tip.object.sha, existingTags });
+    const failures: Array<{ tag: string; error: string }> = [];
+    for (const d of decisions) {
+      if (d.action !== "tag") continue;
+      try {
+        await createTag(d.tag, d.sha);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.warn(`[okffs] Failed to create tag ${d.tag}:`, msg);
+        failures.push({ tag: d.tag, error: msg });
+      }
+    }
+    const report = renderTagReport(merged.number, decisions, failures);
+
+    // GitHub Release entry per tag (#337): for every tag that now points at the
+    // merge commit (just created, or already there), create the Release when
+    // none exists — notes from the app's CHANGELOG section at the merge commit.
+    // Idempotent, so a CI that also creates one (like okffs's publish.yml,
+    // which skips when it exists) never conflicts. Best-effort per tag.
+    const releaseLines: string[] = [];
+    for (const d of decisions) {
+      if (d.action !== "tag" && d.action !== "already") continue;
+      if (d.action === "tag" && failures.some((f) => f.tag === d.tag)) continue;
+      const version = probes.find((p) => p.name === d.app)?.versionAtMerge ?? d.tag.replace(/^.*?(\d+\.\d+\.\d+.*)$/, "$1");
+      try {
+        if (await getReleaseByTag(d.tag)) {
+          if (d.action === "tag") releaseLines.push(`📝 Release for ${d.tag} already exists.`);
+          continue;
+        }
+        const roots = pairs.find((p) => p.name === d.app)?.roots ?? [""];
+        let section: string | null = null;
+        for (const root of roots) {
+          const cl = await getFileContentAtRef(`${root ? `${root}/` : ""}CHANGELOG.md`, mergeSha);
+          section = cl ? extractChangelogSection(cl, version) : null;
+          if (section) break;
+        }
+        let rel: { html_url: string };
+        try {
+          rel = await createRelease({
+            tag: d.tag,
+            name: releaseTitle(d.app, version, d.tag),
+            body: releaseNotes(section, d.app, version),
+            prerelease: isPrereleaseVersion(version),
+          });
+        } catch (err) {
+          // Race with tag-triggered CI that also creates the Release (e.g. this
+          // repo's publish.yml): created between our 404 and this POST → 422
+          // "already_exists". Re-fetch and treat as the idempotent success it is.
+          const msg = err instanceof Error ? err.message : String(err);
+          const existing = /already_exists|GitHub API error 422/.test(msg) ? await getReleaseByTag(d.tag) : null;
+          if (!existing) throw err;
+          releaseLines.push(`📝 Release for ${d.tag} was created concurrently (by CI): ${existing.html_url}`);
+          continue;
+        }
+        releaseLines.push(`📝 Release "${releaseTitle(d.app, version, d.tag)}" created: ${rel.html_url}${section ? "" : " (no changelog section found — fallback notes)"}`);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.warn(`[okffs] Failed to create the GitHub Release for ${d.tag}:`, msg);
+        releaseLines.push(`⚠️ Could not create the GitHub Release for ${d.tag}: ${msg} — create it by hand (the tag stands).`);
+      }
+    }
+    return [report, ...releaseLines].filter(Boolean).join("\n") || null;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn(`[okffs] Release tagging check failed:`, msg);
+    return `⚠️ OKFFS_TAG_RELEASE: could not check/tag the last merged promotion: ${msg}`;
+  }
+}
+
+
+// Poll until GitHub has computed `mergeable` (null right after a push).
+async function getPullRequestWhenComputed(prNumber: number): Promise<PullRequestDetail> {
+  let detail = await getPullRequest(prNumber);
+  for (let i = 0; detail.mergeable === null && i < 5; i++) {
+    await new Promise((r) => setTimeout(r, 800));
+    detail = await getPullRequest(prNumber);
+  }
+  return detail;
+}
+
+// Merge the gate PR into the protected tier under the shared gates (#311).
+async function mergeGatePullRequest(
+  prNumber: number,
+  base: string,
+  wait: { wait_for_checks?: boolean; wait_timeout_seconds?: number } = {}
+): Promise<{ merged: boolean; note: string }> {
+  try {
+    const pr = await getPullRequestWhenComputed(prNumber);
+    const refusal = await verifyMergeableWithWait(pr, base, {
+      wait: wait.wait_for_checks,
+      timeoutSeconds: wait.wait_timeout_seconds,
+      retryHint: "re-run promote_branch with wait_for_checks: true to keep waiting.",
+      refetch: () => getPullRequestWhenComputed(prNumber),
+    });
+    if (refusal) return { merged: false, note: `${refusal} (OKFFS_AUTO_MERGE_PROTECTED is on — re-run promote_branch once addressed.)` };
+    const method = config.protectedMergeMethod;
+    const result = await mergePullRequest(pr.number, method);
+    if (!result.merged) {
+      return { merged: false, note: `⚠️ GitHub did not merge ${prLabel(pr)}: ${result.message || "no reason given"} — nothing was tagged.` };
+    }
+    return { merged: true, note: `✅ Merged ${prLabel(pr)} into \`${base}\` via ${method} (OKFFS_AUTO_MERGE_PROTECTED=true; all gates passed).` };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn(`[okffs] Protected merge of PR #${prNumber} failed:`, msg);
+    return { merged: false, note: `⚠️ Could not merge PR #${prNumber} into \`${base}\`: ${msg}` };
+  }
+}
+
+
+// Sync `from` (the protected branch) back into `into` (the integration branch)
+// with a merge commit (#361). Opens or reuses the PR, waits (bounded) for its
+// checks — it is usually brand new — and merges under the shared gates. Any
+// unmet gate leaves the PR open for the next re-run. Never merges into the
+// protected branch: `into` is the promotion's head, which differs from it.
+async function syncBackProtected(
+  from: string,
+  into: string,
+  wait: { wait_timeout_seconds?: number } = {}
+): Promise<string | null> {
+  if (into === config.protectedBranch) return null;
+  try {
+    const [{ commits }, existing] = await Promise.all([compareBranches(from, into), getOpenPullRequestForBranch(from, into)]);
+    const plan = planSyncBack(commits.length, existing !== null);
+    if (plan === "none") return null;
+    const pr = existing ?? (await createPullRequest(syncBackTitle(from, into), syncBackBody(from, into), from, into));
+    const opened = plan === "open" ? `opened sync-back PR #${pr.number}` : `sync-back PR #${pr.number}`;
+
+    const detail = await getPullRequestWhenComputed(pr.number);
+    const refusal = await verifyMergeableWithWait(detail, into, {
+      wait: true,
+      timeoutSeconds: wait.wait_timeout_seconds,
+      retryHint: "re-run promote_branch to finish the sync-back.",
+      refetch: () => getPullRequestWhenComputed(pr.number),
+    });
+    if (refusal) return `🔄 OKFFS_SYNC_BACK: ${opened} (${pr.html_url}) — not merged yet: ${refusal}`;
+
+    const result = await mergePullRequest(pr.number, SYNC_BACK_MERGE_METHOD);
+    if (!result.merged) {
+      return `⚠️ OKFFS_SYNC_BACK: GitHub did not merge ${opened}: ${result.message || "no reason given"}.`;
+    }
+    const parents = await getCommitParents(result.sha);
+    return renderSyncBackMerged(pr.number, from, into, result.sha, parents);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn(`[okffs] Sync-back ${from} → ${into} failed:`, msg);
+    return `⚠️ OKFFS_SYNC_BACK: could not sync \`${from}\` → \`${into}\`: ${msg}`;
+  }
 }

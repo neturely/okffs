@@ -82,7 +82,7 @@ Maintainer only. Requires an npm account with maintainer access to `@neturely/ok
    git push origin vX.Y.Z
    ```
 
-GitHub Actions publishes to npm automatically on semver tags (`v*.*.*`), so **do not run `npm publish` manually** — it would collide with CI. The `NPM_TOKEN` secret must be set in the repository settings. `prepare_release` deliberately stops before tagging so the irreversible publish stays a manual decision.
+GitHub Actions publishes to npm automatically on semver tags (`v*.*.*`), so **do not run `npm publish` manually** — it would collide with CI. Publishing uses **npm Trusted Publishing** (GitHub OIDC) — no `NPM_TOKEN` secret: the `@neturely/okffs` package on npmjs.com trusts `neturely/okffs`'s `publish.yml` workflow. `prepare_release` deliberately stops before tagging so the irreversible publish stays a manual decision.
 
 ## Codebase search
 
